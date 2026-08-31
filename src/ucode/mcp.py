@@ -2,11 +2,8 @@
 
 from __future__ import annotations
 
-import json
-import os
 import shutil
 import string
-import subprocess
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -26,8 +23,7 @@ from questionary.prompts.common import InquirerControl
 from questionary.question import Question
 from questionary.styles import merge_styles_default
 
-from ucode.agents import copilot, cursor, gemini, opencode
-from ucode.config_io import restore_file
+from ucode.agents import opencode
 from ucode.databricks import (
     apply_pat_environment,
     build_mcp_proxy_argv,
@@ -68,42 +64,14 @@ class _Back:
 # Singleton instance used everywhere; compare with `is _BACK`.
 _BACK = _Back()
 MCP_CLIENTS = {
-    "claude": {
-        "binary": "claude",
-        "display": "Claude Code",
-        "list_command": "claude mcp list",
-    },
-    "codex": {
-        "binary": "codex",
-        "display": "Codex",
-        "list_command": "codex mcp list",
-    },
-    "gemini": {
-        "binary": "gemini",
-        "display": "Gemini CLI",
-        "list_command": "gemini mcp list",
-    },
     "opencode": {
         "binary": "opencode",
         "display": "OpenCode",
         "list_command": "opencode mcp list",
     },
-    "copilot": {
-        "binary": "copilot",
-        "display": "GitHub Copilot CLI",
-        "list_command": "copilot mcp list",
-    },
-    "cursor": {
-        "binary": "cursor-agent",
-        "display": "Cursor",
-        "list_command": "cursor-agent mcp list",
-    },
 }
 SKILLS_MCP_KIND = "skills"
 SKILLS_MCP_SERVER_NAME = "databricks-skill-registry"
-# MCP-only clients ucode never launches for model routing, so they never land in
-# `available_tools`; they're eligible for MCP config purely on being installed.
-MCP_ONLY_CLIENTS = ("cursor",)
 EXTERNAL_MCP_SELECTION_PREFIX = "external:"
 SQL_MCP_VALUE = "managed:sql"
 GENIE_SPACE_SELECTION_PREFIX = "genie-space:"
@@ -121,160 +89,6 @@ MCP_CONNECTION_MARKERS = (
 )
 
 
-def add_claude_mcp_server(
-    name: str,
-    server: list[str] | dict,
-    scope: str = MCP_USER_SCOPE,
-    *,
-    always_load: bool = False,
-) -> None:
-    # Three registration shapes share this helper. The plain proxy path passes an
-    # argv list (`ucode mcp-proxy ...`), registered via `claude mcp add ... -- <argv>`
-    # where `--` fences the proxy's own flags off from claude's parser. The
-    # web_search server (agents/claude.py) passes a full stdio entry dict with its
-    # own env, which only `add-json` can express — so a dict routes there. Finally,
-    # `always_load` (the skills registry) needs `alwaysLoad: true`, which plain
-    # `mcp add` can't set, so build a stdio entry dict and route it to add-json too.
-    if isinstance(server, dict):
-        cmd = ["claude", "mcp", "add-json", name, json.dumps(server), "-s", scope]
-    elif always_load:
-        entry = {
-            "type": "stdio",
-            "command": server[0],
-            "args": list(server[1:]),
-            "alwaysLoad": True,
-        }
-        cmd = ["claude", "mcp", "add-json", name, json.dumps(entry), "-s", scope]
-    else:
-        cmd = ["claude", "mcp", "add", name, "-s", scope, "--", *server]
-    try:
-        subprocess.run(
-            cmd,
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except subprocess.CalledProcessError as exc:
-        raise RuntimeError(f"Failed to add MCP server '{name}' via claude CLI.") from exc
-
-
-def _is_missing_mcp_server_output(output: str) -> bool:
-    normalized = output.lower()
-    return (
-        "not found" in normalized
-        or "no mcp server" in normalized
-        or "no server named" in normalized
-        or ("mcp server found with name" in normalized and "no " in normalized)
-    )
-
-
-def remove_claude_mcp_server(name: str, scope: str) -> bool:
-    try:
-        subprocess.run(
-            ["claude", "mcp", "remove", name, "-s", scope],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-        return True
-    except subprocess.CalledProcessError as exc:
-        output = f"{exc.stderr or ''}\n{exc.stdout or ''}"
-        if _is_missing_mcp_server_output(output):
-            return False
-        raise RuntimeError(f"Failed to remove MCP server '{name}' via claude CLI.") from exc
-
-
-def add_codex_mcp_server(name: str, argv: list[str]) -> None:
-    # `--` fences the proxy argv off from codex's own flag parser, registering
-    # it as a stdio server (codex spawns the command and speaks MCP over it).
-    try:
-        subprocess.run(
-            ["codex", "mcp", "add", name, "--", *argv],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except subprocess.CalledProcessError as exc:
-        raise RuntimeError(f"Failed to add MCP server '{name}' via codex CLI.") from exc
-
-
-def remove_codex_mcp_server(name: str) -> bool:
-    try:
-        result = subprocess.run(
-            ["codex", "mcp", "remove", name],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=30,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"Timed out removing MCP server '{name}' via codex CLI.") from exc
-
-    output = f"{result.stderr or ''}\n{result.stdout or ''}"
-    if _is_missing_mcp_server_output(output):
-        return False
-    if result.returncode != 0:
-        raise RuntimeError(f"Failed to remove MCP server '{name}' via codex CLI.")
-    return True
-
-
-def _gemini_cli_env() -> dict[str, str]:
-    # Pin GEMINI_CLI_HOME to the same directory the launcher.
-    env = os.environ.copy()
-    env["GEMINI_CLI_HOME"] = str(gemini.GEMINI_HOME_DIR)
-    return env
-
-
-def add_gemini_mcp_server(name: str, argv: list[str]) -> None:
-    # Register the proxy as a stdio server: `gemini mcp add <name> <cmd> <args…>
-    # --type stdio`. The scope/type flags trail the captured command + args.
-    try:
-        subprocess.run(
-            [
-                "gemini",
-                "mcp",
-                "add",
-                name,
-                *argv,
-                "--type",
-                "stdio",
-                "--scope",
-                MCP_USER_SCOPE,
-            ],
-            check=True,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            env=_gemini_cli_env(),
-        )
-    except subprocess.CalledProcessError as exc:
-        raise RuntimeError(f"Failed to add MCP server '{name}' via gemini CLI.") from exc
-
-
-def remove_gemini_mcp_server(name: str) -> bool:
-    try:
-        result = subprocess.run(
-            ["gemini", "mcp", "remove", name, "--scope", MCP_USER_SCOPE],
-            check=False,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            env=_gemini_cli_env(),
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise RuntimeError(f"Timed out removing MCP server '{name}' via gemini CLI.") from exc
-
-    output = f"{result.stderr or ''}\n{result.stdout or ''}"
-    if _is_missing_mcp_server_output(output):
-        return False
-    if result.returncode != 0:
-        raise RuntimeError(f"Failed to remove MCP server '{name}' via gemini CLI.")
-    return True
-
-
 def available_mcp_clients() -> list[str]:
     return [client for client, spec in MCP_CLIENTS.items() if shutil.which(str(spec["binary"]))]
 
@@ -283,11 +97,10 @@ def configured_mcp_clients(state: dict, installed_clients: list[str]) -> list[st
     configured_tools = state.get("available_tools") or []
     if not isinstance(configured_tools, list):
         configured_tools = []
-    configured = set(configured_tools)
     return [
         client
         for client in MCP_CLIENTS
-        if client in installed_clients and (client in configured or client in MCP_ONLY_CLIENTS)
+        if client in installed_clients and client in configured_tools
     ]
 
 
@@ -299,54 +112,18 @@ def configure_client_mcp_server(
     profile: str | None = None,
     *,
     use_pat: bool = False,
-    always_load: bool = False,
 ) -> list[str]:
-    # Every client registers the same `ucode mcp-proxy ...` stdio command; the
-    # proxy forwards to `url` and refreshes the Databricks token itself. Only the
-    # per-client registration syntax differs. `always_load` (skills registry) is
-    # a Claude-only hint to load the server's tools at session start; other
-    # clients don't support it and ignore it.
+    if client != "opencode":
+        raise RuntimeError(f"Unsupported MCP client '{client}'.")
     argv = build_mcp_proxy_argv(url, workspace, profile, use_pat=use_pat)
-    if client == "claude":
-        removed_scopes = [
-            scope for scope in MCP_CLEANUP_SCOPES if remove_claude_mcp_server(name, scope)
-        ]
-        add_claude_mcp_server(name, argv, MCP_USER_SCOPE, always_load=always_load)
-        return removed_scopes
-    if client == "codex":
-        removed = remove_codex_mcp_server(name)
-        add_codex_mcp_server(name, argv)
-        return [MCP_USER_SCOPE] if removed else []
-    if client == "gemini":
-        removed = remove_gemini_mcp_server(name)
-        add_gemini_mcp_server(name, argv)
-        return [MCP_USER_SCOPE] if removed else []
-    if client == "opencode":
-        removed = opencode.write_mcp_server_config(name, argv)
-        return [MCP_USER_SCOPE] if removed else []
-    if client == "copilot":
-        removed = copilot.write_mcp_server_config(name, argv)
-        return [MCP_USER_SCOPE] if removed else []
-    if client == "cursor":
-        removed = cursor.write_mcp_server_config(name, argv)
-        return [MCP_USER_SCOPE] if removed else []
-    raise RuntimeError(f"Unsupported MCP client '{client}'.")
+    removed = opencode.write_mcp_server_config(name, argv)
+    return [MCP_USER_SCOPE] if removed else []
 
 
 def remove_client_mcp_server(client: str, name: str) -> list[str]:
-    if client == "claude":
-        return [scope for scope in MCP_CLEANUP_SCOPES if remove_claude_mcp_server(name, scope)]
-    if client == "codex":
-        return [MCP_USER_SCOPE] if remove_codex_mcp_server(name) else []
-    if client == "gemini":
-        return [MCP_USER_SCOPE] if remove_gemini_mcp_server(name) else []
-    if client == "opencode":
-        return [MCP_USER_SCOPE] if opencode.remove_mcp_server_config(name) else []
-    if client == "copilot":
-        return [MCP_USER_SCOPE] if copilot.remove_mcp_server_config(name) else []
-    if client == "cursor":
-        return [MCP_USER_SCOPE] if cursor.remove_mcp_server_config(name) else []
-    raise RuntimeError(f"Unsupported MCP client '{client}'.")
+    if client != "opencode":
+        raise RuntimeError(f"Unsupported MCP client '{client}'.")
+    return [MCP_USER_SCOPE] if opencode.remove_mcp_server_config(name) else []
 
 
 def revert_mcp_configs(state: dict) -> dict[str, bool]:
@@ -360,17 +137,6 @@ def revert_mcp_configs(state: dict) -> dict[str, bool]:
                 continue
             removed_scopes = remove_client_mcp_server(client, name)
             results[client] = bool(removed_scopes) or results.get(client, False)
-
-    # OpenCode MCP entries live in the normal OpenCode config and are restored
-    # by the main agent config revert. Copilot stores MCP servers separately,
-    # so restore its original MCP file after removing per-server entries above.
-    results["copilot"] = restore_file(
-        copilot.COPILOT_MCP_CONFIG_PATH,
-        copilot.COPILOT_MCP_BACKUP_PATH,
-        any(
-            "copilot" in (server.get("clients") or []) for server in state.get("mcp_servers") or []
-        ),
-    ) or results.get("copilot", False)
     return results
 
 
@@ -1068,7 +834,7 @@ def _resolve_mcp_selection(
         full_name = selection.removeprefix(MCP_SERVICE_SELECTION_PREFIX)
         if not full_name:
             raise RuntimeError("missing MCP service name")
-        # Agent CLIs (claude/codex/gemini) reject dots in registered names.
+        # Coding-agent CLIs may reject dots in registered names.
         # URL keeps the UC `<cat>.<schema>.<id>` form; entry name uses dashes.
         return full_name.replace(".", "-"), build_mcp_service_url(workspace, full_name)
 
@@ -1262,7 +1028,7 @@ def apply_mcp_server_changes(
     # rewrites a config file, so a large diff means hundreds of operations; we
     # run them concurrently ACROSS clients but SERIALLY within a client, since
     # every operation for one client mutates that client's single shared config
-    # (`claude mcp add-json` edits ~/.claude.json, etc.) and concurrent
+    # (client configuration writes) and concurrent
     # read-modify-writes would clobber each other.
     work: dict[str, list[Callable[[], object]]] = {client: [] for client in clients}
     changed = False
@@ -1282,13 +1048,10 @@ def apply_mcp_server_changes(
         url = server.get("url")
         if not isinstance(url, str) or not url:
             continue
-        # alwaysLoad (Claude-only) keeps the skills registry's utility tools
-        # discoverable without an explicit mention; other clients ignore it.
-        always_load = server.get("kind") == SKILLS_MCP_KIND
         for client in clients:
             work[client].append(
-                lambda c=client, n=name, u=url, al=always_load: configure_client_mcp_server(
-                    c, n, u, workspace, profile, use_pat=use_pat, always_load=al
+                lambda c=client, n=name, u=url: configure_client_mcp_server(
+                    c, n, u, workspace, profile, use_pat=use_pat
                 )
             )
         changed = True
@@ -1516,15 +1279,12 @@ def setup_mcp_clients(state: dict, section: str) -> tuple[str, str | None, list[
 
     installed_clients = available_mcp_clients()
     if not installed_clients:
-        raise RuntimeError(
-            "No supported MCP clients are installed. Install Claude, Codex, Gemini, OpenCode, "
-            "or GitHub Copilot CLI."
-        )
+        raise RuntimeError("No supported MCP clients are installed. Install OpenCode.")
     clients = configured_mcp_clients(state, installed_clients)
     if not clients:
         raise RuntimeError(
             "No configured MCP-capable coding agents are installed. Run `ucode configure` "
-            "for Codex, Claude, Gemini, OpenCode, or GitHub Copilot CLI first."
+            "for OpenCode first."
         )
     configured_tools = set(state.get("available_tools") or [])
     missing_clients = [
@@ -1682,7 +1442,7 @@ def configure_mcp_command(location: str | None = None, services: set[str] | None
 
 def _mcp_change_summary(added: list[str], removed: list[str], clients: list[str]) -> str:
     """Human-readable one-liner describing what `configure mcp` just saved, e.g.
-    `Added 2, removed 1 MCP server across Claude Code, Codex`. Falls back to a
+    `Added 2, removed 1 MCP server across OpenCode`. Falls back to a
     plain `Saved` when only client bindings changed (no add/remove)."""
     client_names = ", ".join(str(MCP_CLIENTS[c]["display"]) for c in clients if c in MCP_CLIENTS)
     parts: list[str] = []

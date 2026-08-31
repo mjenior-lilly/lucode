@@ -5,11 +5,7 @@ from __future__ import annotations
 import json
 
 from ucode.config_io import APP_DIR, is_dry_run
-from ucode.databricks import (
-    build_auth_shell_command,
-    build_auth_token_argv,
-    build_shared_base_urls,
-)
+from ucode.databricks import build_auth_shell_command, build_shared_base_urls
 
 STATE_PATH = APP_DIR / "state.json"
 STATE_VERSION = 3
@@ -50,9 +46,7 @@ def save_state(state: dict) -> None:
 
     Values a managed config layered over the developer's own are stripped first (see
     ``MANAGED_OVERLAY_KEY``), so an admin-published config takes effect through the generated agent
-    settings files without overwriting what the developer configured for themselves. Read
-    non-destructively: a launch can save more than once from the same dict (e.g. the relayed proxy
-    rewriting its port), and every one of those writes must restore the developer's values.
+    settings files without overwriting what the developer configured for themselves.
     """
     if is_dry_run():
         return
@@ -88,11 +82,7 @@ def _without_managed_overlay(state: dict) -> dict:
 
 
 def set_current_workspace(workspace: str | None) -> None:
-    """Set ``current_workspace`` without touching the per-workspace blocks.
-
-    Used by flows like ``configure tracing`` that operate on a non-current
-    workspace and must not silently change which workspace ``ucode launch``
-    targets afterwards."""
+    """Set ``current_workspace`` without touching the per-workspace blocks."""
     if is_dry_run():
         return
     full = load_full_state()
@@ -162,64 +152,14 @@ def build_agent_state(state: dict) -> dict[str, dict]:
     base_urls = base_urls_value if isinstance(base_urls_value, dict) else {}
     use_pat = bool(state.get("use_pat"))
     auth_command = build_auth_shell_command(workspace, profile, use_pat=use_pat)
-    auth_argv = build_auth_token_argv(workspace, profile, use_pat=use_pat)
-    claude_models_value = state.get("claude_models")
-    claude_models: dict = claude_models_value if isinstance(claude_models_value, dict) else {}
-    codex_models_value = state.get("codex_models")
-    codex_models = codex_models_value if isinstance(codex_models_value, list) else []
-    gemini_models_value = state.get("gemini_models")
-    gemini_models = gemini_models_value if isinstance(gemini_models_value, list) else []
-
-    selection_state = {
-        **state,
-        "claude_models": claude_models,
-        "codex_models": codex_models,
-        "gemini_models": gemini_models,
+    pi_model = default_model_for_tool("pi", state)
+    config = {
+        "model": pi_model,
+        "base_urls": base_urls.get("pi") if isinstance(base_urls.get("pi"), dict) else {},
+        "auth_command": auth_command,
+        "auth_refresh_interval_ms": AUTH_REFRESH_INTERVAL_MS,
     }
-
-    claude_model = (
-        claude_models.get("opus") or claude_models.get("sonnet") or claude_models.get("haiku")
-    )
-    codex_model = default_model_for_tool("codex", selection_state)
-    pi_model = default_model_for_tool("pi", selection_state)
-
-    agents: dict[str, dict] = {
-        "claude": {
-            "model": claude_model,
-            "base_url": base_urls.get("claude"),
-            "auth_command": auth_command,
-            "auth_refresh_interval_ms": AUTH_REFRESH_INTERVAL_MS,
-            "env": {
-                "ANTHROPIC_BASE_URL": base_urls.get("claude"),
-                "CLAUDE_CODE_API_KEY_HELPER_TTL_MS": str(AUTH_REFRESH_INTERVAL_MS),
-                # Kept in sync with agents/claude.py render_overlay.
-                "ENABLE_PROMPT_CACHING_1H": "1",
-                "ENABLE_TOOL_SEARCH": "1",
-                "CLAUDE_CODE_USE_GATEWAY": "1",
-            },
-        },
-        "codex": {
-            "model": codex_model,
-            "base_url": base_urls.get("codex"),
-            "auth_command": auth_command,
-            "auth": {
-                "command": auth_argv[0],
-                "args": auth_argv[1:],
-                "timeout_ms": AUTH_COMMAND_TIMEOUT_MS,
-                "refresh_interval_ms": AUTH_REFRESH_INTERVAL_MS,
-            },
-        },
-        "pi": {
-            "model": pi_model,
-            "base_urls": base_urls.get("pi") if isinstance(base_urls.get("pi"), dict) else {},
-            "auth_command": auth_command,
-            "auth_refresh_interval_ms": AUTH_REFRESH_INTERVAL_MS,
-        },
-    }
-    return {
-        name: {key: value for key, value in config.items() if value is not None}
-        for name, config in agents.items()
-    }
+    return {"pi": {key: value for key, value in config.items() if value is not None}}
 
 
 def clear_state() -> None:
@@ -241,31 +181,4 @@ def mark_tool_managed(state: dict, tool: str, managed_keys: list) -> dict:
     managed_configs[tool] = {"keys": list(managed_keys)}
     state["managed_configs"] = managed_configs
     state["last_tool"] = tool
-    return state
-
-
-def get_provider_service(state: dict, tool: str) -> str | None:
-    """Return the persisted Model Provider Service for ``tool``, if any.
-
-    Launches route through this provider (skipping Databricks model pinning)
-    unless overridden by an explicit ``--provider`` flag.
-    """
-    providers = state.get("provider_services")
-    if not isinstance(providers, dict):
-        return None
-    name = providers.get(tool)
-    return name if isinstance(name, str) and name else None
-
-
-def set_provider_service(state: dict, tool: str, full_name: str | None) -> dict:
-    """Persist (or clear, when ``full_name`` is None) ``tool``'s provider service."""
-    providers = dict(state.get("provider_services") or {})
-    if full_name:
-        providers[tool] = full_name
-    else:
-        providers.pop(tool, None)
-    if providers:
-        state["provider_services"] = providers
-    else:
-        state.pop("provider_services", None)
     return state

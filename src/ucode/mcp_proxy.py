@@ -10,9 +10,9 @@ token from the Databricks CLI profile on **every** upstream HTTP request via an
 ``httpx.Auth`` hook, so the bearer never goes stale mid-session.
 
 This replaces the previous per-client header auth (static ``Bearer
-${OAUTH_TOKEN}``, Claude ``headersHelper``, Cursor literal-token rewrites): one
-uniform mechanism, token refresh in a single place, and the proxy is an
-invisible implementation detail baked into each client's config.
+${OAUTH_TOKEN}`` and per-client token rewrites): one uniform mechanism, token
+refresh in a single place, and the proxy is an invisible implementation detail
+baked into each client's config.
 
 Auth failures are terminal and are reported *fast*. When the Databricks CLI
 can't mint a token (expired refresh token, logged-out profile), the proxy prints

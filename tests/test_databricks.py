@@ -23,7 +23,6 @@ from ucode.databricks import (
     build_auth_token_argv,
     build_databricks_cli_env,
     build_opencode_base_urls,
-    build_shared_base_urls,
     build_skills_mcp_url,
     build_tool_base_url,
     classify_model_family,
@@ -125,23 +124,6 @@ class TestBuildOpencodeBaseUrls:
         assert urls["oss"] == f"{WS}/ai-gateway/mlflow/v1"
 
 
-class TestBuildSharedBaseUrls:
-    def test_contains_all_tools(self):
-        urls = build_shared_base_urls(WS)
-        assert "codex" in urls
-        assert "claude" in urls
-        assert "gemini" in urls
-        assert "opencode" in urls
-
-    def test_opencode_is_dict(self):
-        urls = build_shared_base_urls(WS)
-        assert isinstance(urls["opencode"], dict)
-
-    def test_codex_url_format(self):
-        urls = build_shared_base_urls(WS)
-        assert urls["codex"] == f"{WS}/ai-gateway/codex/v1"
-
-
 class TestBuildSkillsMcpUrl:
     def test_empty_locations_returns_bare_route(self):
         assert build_skills_mcp_url(WS, []) == f"{WS}/ai-gateway/skills/"
@@ -155,37 +137,6 @@ class TestBuildSkillsMcpUrl:
         assert build_skills_mcp_url(WS, ["a.b", "c.d"]) == (
             f"{WS}/ai-gateway/skills/?schema=a.b&schema=c.d"
         )
-
-
-class TestDiscoverClaudeModels:
-    def test_selects_opus_4_8_when_advertised(self, monkeypatch):
-        payload = {
-            "data": [
-                {"id": "databricks-claude-opus-4-7"},
-                {"id": "databricks-claude-opus-4-8"},
-                {"id": "databricks-claude-sonnet-4-6"},
-            ]
-        }
-        monkeypatch.setattr(db_mod, "_http_get_json", lambda url, token: (payload, None))
-
-        models, reason = db_mod.discover_claude_models(WS, "token")
-
-        assert reason is None
-        assert models["opus"] == "databricks-claude-opus-4-8"
-
-    def test_buckets_fable_family(self, monkeypatch):
-        payload = {
-            "data": [
-                {"id": "databricks-claude-fable-5"},
-                {"id": "databricks-claude-opus-4-8"},
-            ]
-        }
-        monkeypatch.setattr(db_mod, "_http_get_json", lambda url, token: (payload, None))
-
-        models, reason = db_mod.discover_claude_models(WS, "token")
-
-        assert reason is None
-        assert models["fable"] == "databricks-claude-fable-5"
 
 
 def _model_service(model_id: str) -> dict:
@@ -233,9 +184,8 @@ class TestDiscoverModelServices:
         claude, codex, gemini, oss, reason = db_mod.discover_model_services(WS, "token")
 
         assert reason is None
-        # Fable bucketed; newest opus wins; sonnet bucketed; haiku absent.
+        # Fable is excluded; newest opus wins; sonnet is retained; haiku is absent.
         assert claude == {
-            "fable": "system.ai.claude-fable-5",
             "opus": "system.ai.claude-opus-4-8",
             "sonnet": "system.ai.claude-sonnet-4-6",
         }
@@ -371,352 +321,6 @@ class TestDiscoverModelServices:
         assert reason is None
         assert ids == ["system.ai.gpt-5"]
         assert calls["n"] == 3  # two failures, third succeeds
-
-
-class TestListModelProviderServices:
-    _PAYLOAD = {
-        "model_provider_services": [
-            {
-                "name": "model-provider-services/main.schema1.anthropic-svc",
-                "config": {"provider_type": "EXTERNAL_MODEL_PROVIDER_TYPE_ANTHROPIC"},
-            },
-            {
-                "name": "model-provider-services/main.schema1.claude-max-svc",
-                "config": {
-                    "provider_type": "EXTERNAL_MODEL_PROVIDER_TYPE_ANTHROPIC",
-                    "anthropic": {"relayed": {}},
-                },
-            },
-            {
-                "name": "model-provider-services/main.schema1.openai-svc",
-                "config": {"provider_type": "EXTERNAL_MODEL_PROVIDER_TYPE_OPENAI"},
-            },
-            {
-                "name": "model-provider-services/main.schema2.bedrock-svc",
-                "config": {
-                    "provider_type": "EXTERNAL_MODEL_PROVIDER_TYPE_AMAZON_BEDROCK",
-                    "allow_all_targets": False,
-                    "targets": [
-                        {
-                            "model": "us.anthropic.claude-sonnet-4-6",
-                            "native_api_types": ["anthropic/v1/messages"],
-                        },
-                        {"model": "global.anthropic.claude-opus-4-8"},
-                    ],
-                },
-            },
-            {
-                "name": "model-provider-services/main.schema2.bedrock-titan-svc",
-                "config": {
-                    "provider_type": "EXTERNAL_MODEL_PROVIDER_TYPE_AMAZON_BEDROCK",
-                    "targets": [{"model": "amazon.titan-text-express-v1"}],
-                },
-            },
-        ]
-    }
-
-    def test_strips_prefix_and_tags_provider_type(self, monkeypatch):
-        monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, timeout=30: (self._PAYLOAD, None)
-        )
-        services, reason = db_mod.list_model_provider_services(WS, "token")
-        assert reason is None
-        assert services[0] == {
-            "name": "main.schema1.anthropic-svc",
-            "provider_type": "anthropic",
-            "targets": [],
-            "allow_all_targets": False,
-            "relayed": False,
-        }
-        assert {s["provider_type"] for s in services} == {
-            "anthropic",
-            "openai",
-            "amazon_bedrock",
-        }
-
-    def test_flags_relayed_anthropic(self, monkeypatch):
-        monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, timeout=30: (self._PAYLOAD, None)
-        )
-        services, _ = db_mod.list_model_provider_services(WS, "token")
-        by_name = {s["name"]: s for s in services}
-        assert by_name["main.schema1.claude-max-svc"]["relayed"] is True
-        assert by_name["main.schema1.anthropic-svc"]["relayed"] is False
-
-    def test_extracts_targets(self, monkeypatch):
-        monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, timeout=30: (self._PAYLOAD, None)
-        )
-        services, _ = db_mod.list_model_provider_services(WS, "token")
-        bedrock = next(s for s in services if s["name"] == "main.schema2.bedrock-svc")
-        assert bedrock["targets"] == [
-            "us.anthropic.claude-sonnet-4-6",
-            "global.anthropic.claude-opus-4-8",
-        ]
-
-    def test_returns_reason_on_failure(self, monkeypatch):
-        monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, timeout=30: (None, "HTTP 500 Server Error")
-        )
-        services, reason = db_mod.list_model_provider_services(WS, "token")
-        assert services == []
-        assert reason == "HTTP 500 Server Error"
-
-    def test_claude_includes_anthropic_and_usable_bedrock(self, monkeypatch):
-        monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, timeout=30: (self._PAYLOAD, None)
-        )
-        names, reason = db_mod.list_tool_provider_services("claude", WS, "token")
-        assert reason is None
-        # Anthropic (stored-key + relayed) + the Bedrock service with Claude
-        # targets; the Bedrock service exposing only Titan is hidden (no Claude
-        # models to pin).
-        assert names == [
-            "main.schema1.anthropic-svc",
-            "main.schema1.claude-max-svc",
-            "main.schema2.bedrock-svc",
-        ]
-
-    def test_codex_filters_to_openai(self, monkeypatch):
-        monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, timeout=30: (self._PAYLOAD, None)
-        )
-        names, _ = db_mod.list_tool_provider_services("codex", WS, "token")
-        assert names == ["main.schema1.openai-svc"]
-
-
-class TestMapBedrockClaudeModels:
-    def test_maps_families(self):
-        models = db_mod.map_bedrock_claude_models(
-            [
-                "us.anthropic.claude-sonnet-4-6",
-                "global.anthropic.claude-opus-4-8",
-                "anthropic.claude-haiku-4-5",
-                "amazon.titan-text-express-v1",
-            ]
-        )
-        assert models == {
-            "sonnet": "us.anthropic.claude-sonnet-4-6",
-            "opus": "global.anthropic.claude-opus-4-8",
-            "haiku": "anthropic.claude-haiku-4-5",
-        }
-
-    def test_prefers_highest_version(self):
-        models = db_mod.map_bedrock_claude_models(
-            ["us.anthropic.claude-sonnet-4-5", "us.anthropic.claude-sonnet-4-6"]
-        )
-        assert models["sonnet"] == "us.anthropic.claude-sonnet-4-6"
-
-    def test_region_tie_break_prefers_global(self):
-        models = db_mod.map_bedrock_claude_models(
-            [
-                "us.anthropic.claude-opus-4-8",
-                "global.anthropic.claude-opus-4-8",
-                "eu.anthropic.claude-opus-4-8",
-            ]
-        )
-        assert models["opus"] == "global.anthropic.claude-opus-4-8"
-
-    def test_empty_when_no_claude(self):
-        assert db_mod.map_bedrock_claude_models(["amazon.titan-text-express-v1"]) == {}
-
-
-class TestProviderServicePagination:
-    """The listing is paginated; ignoring next_page_token hid services on later pages entirely."""
-
-    @staticmethod
-    def _page(names, next_token=None):
-        payload = {
-            "model_provider_services": [
-                {
-                    "name": f"model-provider-services/{n}",
-                    "config": {"provider_type": "EXTERNAL_MODEL_PROVIDER_TYPE_OPENAI"},
-                }
-                for n in names
-            ]
-        }
-        if next_token:
-            payload["next_page_token"] = next_token
-        return payload
-
-    def test_follows_next_page_token(self, monkeypatch):
-        pages = [
-            self._page(["main.s.one"], next_token="tok2"),
-            self._page(["main.s.two"]),
-        ]
-        seen: list[str] = []
-
-        def fake_get(url, token, **kwargs):
-            seen.append(url)
-            return pages[len(seen) - 1], None
-
-        monkeypatch.setattr(db_mod, "_http_get_json", fake_get)
-        services, reason = db_mod.list_model_provider_services("https://ws", "tok")
-
-        assert reason is None
-        assert [s["name"] for s in services] == ["main.s.one", "main.s.two"]
-        assert "page_token=tok2" in seen[1]
-
-    def test_stops_on_a_repeated_token(self, monkeypatch):
-        # A server that echoes the same token would otherwise spin forever.
-        monkeypatch.setattr(
-            db_mod,
-            "_http_get_json",
-            lambda url, token, **kw: (self._page(["main.s.one"], next_token="same"), None),
-        )
-        services, reason = db_mod.list_model_provider_services("https://ws", "tok")
-        assert reason is None
-        assert len(services) >= 1
-
-    def test_keeps_earlier_pages_when_a_later_one_fails(self, monkeypatch):
-        calls = {"n": 0}
-
-        def fake_get(url, token, **kwargs):
-            calls["n"] += 1
-            if calls["n"] == 1:
-                return self._page(["main.s.one"], next_token="tok2"), None
-            return None, "HTTP 500 Server Error"
-
-        monkeypatch.setattr(db_mod, "_http_get_json", fake_get)
-        services, reason = db_mod.list_model_provider_services("https://ws", "tok")
-
-        # A mid-pagination blip should degrade to partial results, not to an error.
-        assert reason is None
-        assert [s["name"] for s in services] == ["main.s.one"]
-
-    def test_reports_the_failure_when_nothing_was_collected(self, monkeypatch):
-        monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, **kw: (None, "HTTP 403 Forbidden")
-        )
-        services, reason = db_mod.list_model_provider_services("https://ws", "tok")
-        assert services == []
-        assert reason == "HTTP 403 Forbidden"
-
-    def test_parent_scopes_the_listing(self, monkeypatch):
-        seen: dict = {}
-
-        def fake_get(url, token, **kwargs):
-            seen["url"] = url
-            return self._page(["main.tien_le.openai"]), None
-
-        monkeypatch.setattr(db_mod, "_http_get_json", fake_get)
-        db_mod.list_model_provider_services("https://ws", "tok", parent="main.tien_le")
-
-        assert "parent=schemas%2Fmain.tien_le" in seen["url"]
-
-    def test_page_size_is_always_sent(self, monkeypatch):
-        seen: dict = {}
-
-        def fake_get(url, token, **kwargs):
-            seen["url"] = url
-            return self._page(["main.s.one"]), None
-
-        monkeypatch.setattr(db_mod, "_http_get_json", fake_get)
-        db_mod.list_model_provider_services("https://ws", "tok")
-
-        assert "page_size=" in seen["url"]
-
-
-class TestGetModelProviderService:
-    def test_addresses_the_service_directly(self, monkeypatch):
-        seen: dict = {}
-
-        def fake_get(url, token, **kwargs):
-            seen["url"] = url
-            return {
-                "name": "model-provider-services/main.tien_le.openai_all",
-                "config": {
-                    "provider_type": "EXTERNAL_MODEL_PROVIDER_TYPE_OPENAI",
-                    "allow_all_targets": True,
-                },
-            }, None
-
-        monkeypatch.setattr(db_mod, "_http_get_json", fake_get)
-        service, reason = db_mod.get_model_provider_service(
-            "main.tien_le.openai_all", "https://ws", "tok"
-        )
-
-        assert reason is None
-        assert service is not None
-        assert service["name"] == "main.tien_le.openai_all"
-        assert service["allow_all_targets"] is True
-        assert seen["url"].endswith("/model-provider-services/main.tien_le.openai_all")
-
-    def test_missing_service_returns_the_reason(self, monkeypatch):
-        monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, **kw: (None, "HTTP 404 Not Found")
-        )
-        service, reason = db_mod.get_model_provider_service("main.a.b", "https://ws", "tok")
-        assert service is None
-        assert "404" in (reason or "")
-
-
-class TestResolveProviderService:
-    _PAYLOAD = TestListModelProviderServices._PAYLOAD
-
-    def _patch(self, monkeypatch):
-        monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, timeout=30: (self._PAYLOAD, None)
-        )
-
-    def test_anthropic_ok(self, monkeypatch):
-        self._patch(monkeypatch)
-        service, error = db_mod.resolve_provider_service(
-            "claude", "main.schema1.anthropic-svc", WS, "token"
-        )
-        assert error is None
-        assert service["provider_type"] == "anthropic"
-
-    def test_bedrock_with_claude_ok(self, monkeypatch):
-        self._patch(monkeypatch)
-        service, error = db_mod.resolve_provider_service(
-            "claude", "main.schema2.bedrock-svc", WS, "token"
-        )
-        assert error is None
-        assert service["provider_type"] == "amazon_bedrock"
-
-    def test_wrong_type_rejected(self, monkeypatch):
-        self._patch(monkeypatch)
-        service, error = db_mod.resolve_provider_service(
-            "claude", "main.schema1.openai-svc", WS, "token"
-        )
-        assert service is None
-        assert "can't route to" in error
-
-    def test_bedrock_without_claude_rejected(self, monkeypatch):
-        self._patch(monkeypatch)
-        service, error = db_mod.resolve_provider_service(
-            "claude", "main.schema2.bedrock-titan-svc", WS, "token"
-        )
-        assert service is None
-        assert "no Claude models" in error
-
-    def test_not_found_lists_usable(self, monkeypatch):
-        self._patch(monkeypatch)
-        service, error = db_mod.resolve_provider_service("claude", "main.x.missing", WS, "token")
-        assert service is None
-        assert "was not found" in error
-        assert "main.schema1.anthropic-svc" in error
-
-    def test_feature_unavailable(self, monkeypatch):
-        reason = "HTTP 400 Bad Request: ModelProviderService feature is not available"
-        monkeypatch.setattr(db_mod, "_http_get_json", lambda url, token, timeout=30: (None, reason))
-        service, error = db_mod.resolve_provider_service("claude", "main.x.y", WS, "token")
-        assert service is None
-        assert "not available" in error
-
-
-class TestModelProviderFeatureUnavailable:
-    def test_detects_feature_not_available(self):
-        reason = (
-            'HTTP 400 Bad Request: {"error_code":"BAD_REQUEST",'
-            '"message":"ModelProviderService feature is not available"}'
-        )
-        assert db_mod.is_model_provider_feature_unavailable(reason) is True
-
-    def test_false_for_other_errors(self):
-        assert db_mod.is_model_provider_feature_unavailable("HTTP 500 Server Error") is False
-        assert db_mod.is_model_provider_feature_unavailable(None) is False
 
 
 class TestListMcpServices:
@@ -2045,28 +1649,28 @@ class TestInstallAiTools:
 
     def test_invokes_aitools_install(self, monkeypatch):
         calls = self._capture_run(monkeypatch)
-        install_ai_tools(["claude-code", "codex"])
+        install_ai_tools(["opencode"])
         assert len(calls) == 1
         cmd = calls[0]
         assert cmd[:3] == ["databricks", "aitools", "install"]
-        assert "--agents" in cmd and cmd[cmd.index("--agents") + 1] == "claude-code,codex"
+        assert "--agents" in cmd and cmd[cmd.index("--agents") + 1] == "opencode"
         assert "--scope" in cmd and cmd[cmd.index("--scope") + 1] == "global"
         assert "--profile" not in cmd
 
     def test_passes_profile_when_set(self, monkeypatch):
         calls = self._capture_run(monkeypatch)
-        install_ai_tools(["claude-code"], profile="myprofile")
+        install_ai_tools(["opencode"], profile="myprofile")
         cmd = calls[0]
         assert "--profile" in cmd and cmd[cmd.index("--profile") + 1] == "myprofile"
 
     def test_install_failure_is_non_fatal(self, monkeypatch):
         self._capture_run(monkeypatch, raises=subprocess.CalledProcessError(1, "databricks"))
         # Must not raise — AI Tools are best-effort.
-        install_ai_tools(["claude-code"])
+        install_ai_tools(["opencode"])
 
     def test_timeout_is_non_fatal(self, monkeypatch):
         self._capture_run(monkeypatch, raises=subprocess.TimeoutExpired("databricks", 300))
-        install_ai_tools(["claude-code"])
+        install_ai_tools(["opencode"])
 
     def test_timeout_stderr_bytes_decoded_in_warning(self, monkeypatch):
         # TimeoutExpired.stderr is bytes even with text=True; the warning must
@@ -2076,7 +1680,7 @@ class TestInstallAiTools:
         self._capture_run(monkeypatch, raises=err)
         warnings = []
         monkeypatch.setattr(db_mod, "print_warning", warnings.append)
-        install_ai_tools(["claude-code"])
+        install_ai_tools(["opencode"])
         assert len(warnings) == 1
         assert "install timed out" in warnings[0]
         assert "b'" not in warnings[0]
@@ -2085,13 +1689,13 @@ class TestInstallAiTools:
         # A modern CLI can still fail (e.g. an agent binary missing from PATH);
         # the warning must show the CLI's real error, not blame the version.
         err = subprocess.CalledProcessError(1, "databricks")
-        err.stderr = "resolving agents...\ncopilot: cli-not-on-path: could not resolve copilot"
+        err.stderr = "resolving agents...\nopencode: cli-not-on-path: could not resolve opencode"
         self._capture_run(monkeypatch, raises=err)
         warnings = []
         monkeypatch.setattr(db_mod, "print_warning", warnings.append)
-        install_ai_tools(["copilot"])
+        install_ai_tools(["opencode"])
         assert len(warnings) == 1
-        assert "copilot: cli-not-on-path: could not resolve copilot" in warnings[0]
+        assert "opencode: cli-not-on-path: could not resolve opencode" in warnings[0]
 
 
 class TestClassifyModelFamily:
@@ -2104,7 +1708,7 @@ class TestClassifyModelFamily:
             ("system.ai.claude-opus-4-8", "opus"),
             ("system.ai.claude-sonnet-5", "sonnet"),
             ("databricks-claude-haiku-4-5", "haiku"),
-            ("system.ai.claude-fable-5", "fable"),
+            ("system.ai.claude-fable-5", None),
             ("system.ai.gpt-5-3-codex", "codex"),
             ("system.ai.gemini-3-flash", "gemini"),
             ("system.ai.kimi-k2-7-code", "oss"),
@@ -2143,19 +1747,6 @@ class TestModelServicesCache:
         assert first == second
         assert calls["n"] == 1
 
-    def test_the_two_discovery_helpers_share_one_walk(self, monkeypatch):
-        # The duplicate spinner in `ucode setup`: `discover_model_services` and
-        # `discover_claude_models_unbucketed` both page the same endpoint.
-        calls: dict = {}
-        db_mod.clear_model_services_cache()
-        monkeypatch.setattr(db_mod, "_get_model_services_page", self._counting_page(calls))
-        claude, _codex, _gemini, _oss, _reason = db_mod.discover_model_services(WS, "tok")
-        unbucketed, _ = db_mod.discover_claude_models_unbucketed(WS, "tok")
-        assert calls["n"] == 1
-        # Both views still come back intact: newest-per-family, and the full list.
-        assert claude["opus"] == "system.ai.claude-opus-5"
-        assert unbucketed == ["system.ai.claude-opus-4-8", "system.ai.claude-opus-5"]
-
     def test_use_cache_false_forces_a_fresh_walk(self, monkeypatch):
         calls: dict = {}
         db_mod.clear_model_services_cache()
@@ -2190,95 +1781,6 @@ class TestModelServicesCache:
         ids, reason = db_mod.list_model_services(WS, "tok")
         assert reason is None
         assert ids
-
-
-class TestModelProviderServicesCache:
-    """The MPS listing is workspace-wide and filtered per agent afterwards, so one call serves every
-    agent — `ucode setup` used to re-list it once per MPS-capable agent."""
-
-    @staticmethod
-    def _counting_listing(calls: dict):
-        def get_json(url, token, timeout=10):
-            calls["n"] = calls.get("n", 0) + 1
-            return {
-                "model_provider_services": [
-                    {
-                        "name": "model-provider-services/main.j.ant",
-                        "config": {
-                            "provider_type": "ANTHROPIC",
-                            "targets": [{"model": "claude-opus-5"}],
-                        },
-                    },
-                    {
-                        "name": "model-provider-services/main.j.oai",
-                        "config": {"provider_type": "OPENAI", "targets": [{"model": "gpt-5"}]},
-                    },
-                ]
-            }, None
-
-        return get_json
-
-    def test_one_call_serves_every_agent(self, monkeypatch):
-        calls: dict = {}
-        db_mod.clear_model_services_cache()
-        monkeypatch.setattr(db_mod, "_http_get_json", self._counting_listing(calls))
-        claude, _ = db_mod.list_tool_provider_services("claude", WS, "tok")
-        codex, _ = db_mod.list_tool_provider_services("codex", WS, "tok")
-        assert calls["n"] == 1
-        # Each agent still gets only the services matching its API dialect.
-        assert claude == ["main.j.ant"]
-        assert codex == ["main.j.oai"]
-
-    def test_use_cache_false_forces_a_fresh_call(self, monkeypatch):
-        calls: dict = {}
-        db_mod.clear_model_services_cache()
-        monkeypatch.setattr(db_mod, "_http_get_json", self._counting_listing(calls))
-        db_mod.list_model_provider_services(WS, "tok")
-        db_mod.list_model_provider_services(WS, "tok", use_cache=False)
-        assert calls["n"] == 2
-
-    def test_each_workspace_is_cached_separately(self, monkeypatch):
-        calls: dict = {}
-        db_mod.clear_model_services_cache()
-        monkeypatch.setattr(db_mod, "_http_get_json", self._counting_listing(calls))
-        db_mod.list_model_provider_services(WS, "tok")
-        db_mod.list_model_provider_services("https://other.databricks.com", "tok")
-        assert calls["n"] == 2
-
-    def test_failures_are_not_cached(self, monkeypatch):
-        calls: dict = {}
-        db_mod.clear_model_services_cache()
-        monkeypatch.setattr(db_mod, "_http_get_json", lambda *a, **k: (None, "HTTP 500"))
-        services, reason = db_mod.list_model_provider_services(WS, "tok")
-        assert services == [] and reason is not None
-        monkeypatch.setattr(db_mod, "_http_get_json", self._counting_listing(calls))
-        services, reason = db_mod.list_model_provider_services(WS, "tok")
-        assert reason is None and services
-
-    def test_the_first_caller_cannot_corrupt_the_cache(self, monkeypatch):
-        # The caller that populates the cache gets the same list that was stored, so mutating it
-        # would poison every later reader.
-        calls: dict = {}
-        db_mod.clear_model_services_cache()
-        monkeypatch.setattr(db_mod, "_http_get_json", self._counting_listing(calls))
-        first, _ = db_mod.list_model_provider_services(WS, "tok")
-        first[0]["name"] = "clobbered"
-        first.pop()
-        second, _ = db_mod.list_model_provider_services(WS, "tok")
-        assert [s["name"] for s in second] == ["main.j.ant", "main.j.oai"]
-
-    def test_a_later_caller_cannot_corrupt_the_cache(self, monkeypatch):
-        # And so does every cache *hit* — the wizard filters this list per agent, so the second
-        # agent's read must not see what the first one did to it.
-        calls: dict = {}
-        db_mod.clear_model_services_cache()
-        monkeypatch.setattr(db_mod, "_http_get_json", self._counting_listing(calls))
-        db_mod.list_model_provider_services(WS, "tok")  # populate
-        hit, _ = db_mod.list_model_provider_services(WS, "tok")
-        hit[0]["name"] = "clobbered"
-        hit.pop()
-        again, _ = db_mod.list_model_provider_services(WS, "tok")
-        assert [s["name"] for s in again] == ["main.j.ant", "main.j.oai"]
 
 
 class TestIsWorkspaceAdmin:
@@ -2486,13 +1988,12 @@ class TestCodingAgentConfigCrudClients:
             serialize_managed_config(
                 {
                     "display_name": "org config",
-                    "default_agent": "claude",
+                    "default_agent": "pi",
                     "enabled_agents": {
-                        "claude": {"model_config": {"default_model": "system.ai.claude-opus-5"}}
+                        "pi": {"model_config": {"default_model": "system.ai.claude-opus-5"}}
                     },
                     "mcp_servers": [{"name": "databricks-sql", "type": "sql"}],
                     "skills": {"names": ["main.default"]},
-                    "tracing_table": "main.default.traces",
                     "budget_policy": {
                         "budget_id": "11111111-1111-1111-1111-111111111111",
                         "tiers": [],

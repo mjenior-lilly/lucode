@@ -53,10 +53,8 @@ WITH usage_events AS (
 SELECT
   current_user() AS requester_name,
   CASE
-    WHEN lower(user_agent) LIKE '%codex%' THEN 'codex'
-    WHEN lower(user_agent) LIKE '%claude%' THEN 'claude'
-    WHEN lower(user_agent) LIKE '%gemini%' THEN 'gemini'
     WHEN lower(user_agent) LIKE '%opencode%' THEN 'opencode'
+    WHEN lower(user_agent) LIKE '%pi/%' THEN 'pi'
     ELSE 'other'
   END AS tool,
   date(event_time) AS usage_day,
@@ -68,10 +66,8 @@ FROM system.ai_gateway.usage
 WHERE event_time >= current_timestamp() - interval {USAGE_SUMMARY_DAYS} days
   AND requester = current_user()
   AND (
-    lower(user_agent) LIKE '%codex%'
-    OR lower(user_agent) LIKE '%claude%'
-    OR lower(user_agent) LIKE '%gemini%'
-    OR lower(user_agent) LIKE '%opencode%'
+    lower(user_agent) LIKE '%opencode%'
+    OR lower(user_agent) LIKE '%pi/%'
   )
 ),
 daily_usage AS (
@@ -189,14 +185,8 @@ def simplify_model_name(tool: str, model_name: str) -> str:
     if normalized.startswith(prefix):
         normalized = normalized[len(prefix) :]
 
-    tool_prefixes = {
-        "claude": "claude-",
-        "gemini": "gemini-",
-        "codex": "gpt-",
-    }
-    tool_prefix = tool_prefixes.get(tool)
-    if tool_prefix and normalized.startswith(tool_prefix):
-        normalized = normalized[len(tool_prefix) :]
+    # Model ids (`claude-*`, `gpt-*`, `gemini-*`) are shown as-is: they are model families served
+    # through Pi/OpenCode, not harnesses, so there is no per-harness prefix to strip.
     return normalized
 
 

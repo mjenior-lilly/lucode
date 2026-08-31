@@ -1,25 +1,28 @@
 """Pi coding agent: writes ~/.pi/agent/models.json with Databricks-backed providers.
 
-Pi (https://pi.dev) is a multi-provider coding agent. We register three
-providers in its `models.json`, each speaking the API dialect best suited to
-that family's gateway path:
+Pi (https://pi.dev) is a multi-provider coding agent. Workspace discovery can
+render three native-API providers in its `models.json`:
 
 - `databricks-claude`  (api: anthropic-messages)       → /ai-gateway/anthropic
 - `databricks-openai`  (api: openai-responses)         → /ai-gateway/codex/v1
 - `databricks-gemini`  (api: google-generative-ai)     → /ai-gateway/gemini/v1beta
 
-Per-provider `compat` flags work around fields the gateway translators reject:
+The repository template also defines user-maintained OSS and foundation models
+under `databricks-mlflow` (api: openai-completions) at /ai-gateway/mlflow/v1.
 
-- claude: `supportsEagerToolInputStreaming: false` — the Anthropic translator
-  rejects `tools[].eager_input_streaming` on the streaming + tools path that
-  pi uses for every request. With this flag pi omits the per-tool field and
-  sends the legacy `anthropic-beta: fine-grained-tool-streaming-...` header
-  instead, which the gateway accepts.
+API-specific `compat` flags align Pi's requests with the gateway routes:
 
-OSS / Databricks-foundation models (Llama, Qwen, etc.) are not exposed via
-pi today — they live behind /ai-gateway/mlflow/v1 with per-model
-`max_tokens` caps that pi has no global way to honor without per-model
-config we don't currently maintain.
+- Claude disables eager tool input streaming because the Anthropic translator
+  rejects `tools[].eager_input_streaming`; Pi sends the accepted legacy beta
+  header instead. Adaptive thinking is enabled only on models that require it.
+- OpenAI enables strict function-tool schemas supported by the Responses route.
+- MLflow uses `max_tokens`, a `system` prompt role, and omits unsupported or
+  undocumented OpenAI Chat Completions fields.
+
+Additional compat keys may be set manually in models.json; ucode preserves
+them across token refreshes and config rewrites. Provider model lists are also
+preserved as user-defined configuration; workspace discovery never adds model
+entries. OSS and foundation entries require the correct per-model output caps.
 
 The bearer token is baked into the file and refreshed by a background thread
 while the session runs (same pattern as OpenCode/Copilot).
@@ -42,10 +45,8 @@ from ucode.config_io import (
     write_json_file,
 )
 from ucode.databricks import (
-    ANTHROPIC_FAMILIES,
     TOKEN_REFRESH_INTERVAL_SECONDS,
     build_pi_base_urls,
-    classify_model_family,
     get_databricks_token,
 )
 from ucode.state import mark_tool_managed, save_state
@@ -72,12 +73,17 @@ PROVIDER_NAMES = (
     "databricks-gemini",
 )
 
+# databricks-mlflow is user-configured rather than rendered by this module, but
+# its credential follows the same Databricks token lifecycle.
+TOKEN_PROVIDER_NAMES = (*PROVIDER_NAMES, "databricks-mlflow")
+
 PROVIDER_KEYS: list[list[str]] = [["providers", name] for name in PROVIDER_NAMES]
 
 # Old provider names earlier ucode versions wrote; cleaned up on each write so
 # users don't end up with stale entries pointing at routes that 400.
 LEGACY_PROVIDER_NAMES = ("databricks-anthropic", "databricks-codex", "databricks-oss")
 
+DEFAULT_HOST_NAME = "databricks" # To be changed to bedrock once available
 
 def is_update_available() -> tuple[str, str] | None:
     return available_npm_package_update(SPEC["package"])
@@ -109,6 +115,7 @@ def render_overlay(
     claude_models: dict[str, str],
     codex_models: list[str],
     gemini_models: list[str],
+    existing_config: dict | None = None,
 ) -> tuple[dict, list[list[str]]]:
     """Return (overlay, managed_key_paths) for ~/.pi/agent/models.json."""
     providers: dict = {}
@@ -117,8 +124,14 @@ def render_overlay(
     # `/` and a space so it can never collide — safe to pass as a literal.
     ua_headers = {"User-Agent": f"ucode/{ucode_version()} pi/{agent_version('pi')}"}
 
+    existing_providers = (existing_config or {}).get("providers") or {}
+
     claude_ids = sorted(set(claude_models.values()))
     if claude_ids:
+        existing_claude = existing_providers.get("databricks-claude", {})
+        # Preserve user-added compat flags (e.g. supportsLongCacheRetention,
+        # supportsStrictTools) while ensuring our required key is set.
+        compat = {**existing_claude.get("compat", {}), "supportsEagerToolInputStreaming": False}
         providers["databricks-claude"] = {
             "baseUrl": pi_base_urls["claude"],
             "api": "anthropic-messages",
@@ -127,19 +140,21 @@ def render_overlay(
             # Gateway's Anthropic translator rejects per-tool
             # `eager_input_streaming` on the streaming + tools path. Pi sends
             # the legacy beta header instead when this is false.
-            "compat": {"supportsEagerToolInputStreaming": False},
+            "compat": compat,
             "headers": ua_headers,
-            "models": [{"id": m} for m in claude_ids],
         }
         keys.append(["providers", "databricks-claude"])
     if codex_models:
+        existing_openai = existing_providers.get("databricks-openai", {})
+        compat = {**existing_openai.get("compat", {}), "supportsStrictMode": True}
         providers["databricks-openai"] = {
             "baseUrl": pi_base_urls["openai"],
             "api": "openai-responses",
             "apiKey": token,
             "authHeader": True,
+            # The Responses route accepts strict JSON-schema function tools.
+            "compat": compat,
             "headers": ua_headers,
-            "models": [{"id": m} for m in codex_models],
         }
         keys.append(["providers", "databricks-openai"])
     if gemini_models:
@@ -149,7 +164,6 @@ def render_overlay(
             "apiKey": token,
             "authHeader": True,
             "headers": ua_headers,
-            "models": [{"id": m} for m in gemini_models],
         }
         keys.append(["providers", "databricks-gemini"])
     overlay: dict = {
@@ -158,6 +172,24 @@ def render_overlay(
     if providers:
         overlay["providers"] = providers
     return overlay, keys
+
+
+def _update_provider_api_keys(config: dict, token: str) -> bool:
+    """Set existing apiKey fields for providers backed by the Databricks token."""
+    providers = config.get("providers")
+    if not isinstance(providers, dict):
+        return False
+    changed = False
+    for name in TOKEN_PROVIDER_NAMES:
+        provider = providers.get(name)
+        if (
+            isinstance(provider, dict)
+            and "apiKey" in provider
+            and provider["apiKey"] != token
+        ):
+            provider["apiKey"] = token
+            changed = True
+    return changed
 
 
 def write_tool_config(
@@ -173,26 +205,22 @@ def write_tool_config(
             state["workspace"], state.get("profile"), force_refresh=force_refresh
         )
     pi_base_urls = state.get("base_urls", {}).get("pi") or build_pi_base_urls(state["workspace"])
-    managed_families = _managed_model_families(state)
-    claude_models, codex_models, gemini_models = managed_families or (
-        state.get("claude_models") or {},
-        state.get("codex_models") or [],
-        state.get("gemini_models") or [],
-    )
+    existing = read_json_safe(PI_CONFIG_PATH)
     overlay, managed_keys = render_overlay(
         model,
         token,
         pi_base_urls,
-        claude_models,
-        codex_models,
-        gemini_models,
+        state.get("claude_models") or {},
+        state.get("codex_models") or [],
+        state.get("gemini_models") or [],
+        existing_config=existing,
     )
-    existing = read_json_safe(PI_CONFIG_PATH)
     providers = existing.get("providers")
     if isinstance(providers, dict):
-        for stale in (*PROVIDER_NAMES, *LEGACY_PROVIDER_NAMES):
+        for stale in LEGACY_PROVIDER_NAMES:
             providers.pop(stale, None)
     merged = deep_merge_dict(existing, overlay)
+    _update_provider_api_keys(merged, token)
     write_json_file(PI_CONFIG_PATH, merged)
     _write_settings(overlay["model"])
     state = mark_tool_managed(state, "pi", managed_keys)
@@ -213,68 +241,75 @@ def _write_settings(model_selector: str) -> None:
     write_json_file(PI_SETTINGS_PATH, merged)
 
 
-def _managed_model_families(state: dict) -> tuple[dict[str, str], list[str], list[str]] | None:
-    """Split a managed config's ``pi_models`` into the per-family inputs Pi's providers need.
-
-    Pi builds one provider block per family, so a flat list has to be classified back out. Returns
-    None when the managed models yield no family Pi can serve, leaving the workspace-wide discovery
-    lists in play rather than writing a config with no usable provider.
-    """
-    managed = state.get("pi_models")
-    if not isinstance(managed, list) or not managed:
-        return None
-    claude: dict[str, str] = {}
-    codex: list[str] = []
-    gemini: list[str] = []
-    for model in managed:
-        if not isinstance(model, str) or not model.strip():
-            continue
-        family = classify_model_family(model)
-        if family in ANTHROPIC_FAMILIES:
-            claude.setdefault(family, model)
-        elif family == "codex":
-            codex.append(model)
-        elif family == "gemini":
-            gemini.append(model)
-    if not (claude or codex or gemini):
-        return None
-    return claude, codex, gemini
+def _refresh_token_in_file(token: str) -> None:
+    """Update provider apiKey fields backed by the Databricks token, preserving other config."""
+    existing = read_json_safe(PI_CONFIG_PATH)
+    if _update_provider_api_keys(existing, token):
+        write_json_file(PI_CONFIG_PATH, existing)
 
 
 def default_model(state: dict) -> str | None:
-    """Prefer Claude opus → sonnet → haiku; fall back to codex, gemini.
-
-    A managed config's ``pi_default_model`` and ``pi_models`` both win outright: the former is
-    the admin's chosen session start, the latter their allowlist. Workspace-wide discovery falls back.
     """
-    if isinstance(state.get("pi_default_model"), str):
-        return state.get("pi_default_model")
-    managed = state.get("pi_models")
-    if isinstance(managed, list) and managed:
-        return managed[0]
-    claude_models = state.get("claude_models") or {}
-    for family in ("opus", "sonnet", "haiku"):
-        if claude_models.get(family):
-            return claude_models[family]
-    codex_models = state.get("codex_models") or []
-    if codex_models:
-        return codex_models[0]
-    gemini_models = state.get("gemini_models") or []
-    return gemini_models[0] if gemini_models else None
+    Return the configured Pi default model, or the built-in default. 
+    Fallback to provider progression: OpenAI -> Anthropic -> Google.
+    """
+    # Fetch configured models
+    selected = None
+    user_configured = read_json_safe(PI_SETTINGS_PATH).get("defaultModel") or None
+    managed_models = state.get("pi_models")
+    anthropic_models = state.get("claude_models") or {}
+    openai_models = state.get("codex_models") or []
+    google_models = state.get("gemini_models") or []
+
+    # User configuration takes precedence
+    if user_configured:
+        selected = user_configured
+
+    # Managed allowlist
+    elif isinstance(managed_models, list) and managed_models:
+        selected = managed_models[0]
+
+    # Prioritize OpenAI --> Anthropic --> Google
+    # OpenAI
+    elif openai_models:
+        for family in ("sol", "terra", "luna"):
+            for model in openai_models:
+                if family in model:
+                    selected = model
+                    break
+    # Anthropic
+    elif anthropic_models:
+        for family in anthropic_models.keys():
+            selected = anthropic_models.get(family)
+    # Google
+    elif google_models:
+        for family in ("pro", "flash", "flash-lite"):
+            for model in google_models:
+                if family in model:
+                    selected = model
+                    break
+
+    return selected
 
 
-def _refresh_token_once(state: dict, *, force_refresh: bool = False) -> str:
+def _refresh_token_once(state: dict, *, force_refresh: bool = False, token_only: bool = False) -> str:
     model = default_model(state)
     if not model:
         raise RuntimeError("No Pi model is available on this workspace.")
-    _, token = write_tool_config(state, model, force_refresh=force_refresh)
+    token = get_databricks_token(
+        state["workspace"], state.get("profile"), force_refresh=force_refresh
+    )
+    if token_only:
+        _refresh_token_in_file(token)
+    else:
+        write_tool_config(state, model, token=token)
     return token
 
 
 def _refresh_forever(state: dict, stop_event: threading.Event) -> None:
     while not stop_event.wait(TOKEN_REFRESH_INTERVAL_SECONDS):
         try:
-            _refresh_token_once(state, force_refresh=True)
+            _refresh_token_once(state, force_refresh=True, token_only=True)
         except RuntimeError:
             continue
 

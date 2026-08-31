@@ -9,7 +9,7 @@ name = "ucode"
 # count and short hash (e.g. `0.1.0+14.g93986a8`) so a reported version maps back
 # to an exact commit.
 dynamic = ["version"]
-description = "Bootstrap Codex against a Databricks workspace with minimal setup."
+description = "Configure and launch Pi and OpenCode through Databricks AI Gateway."
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -24,12 +24,6 @@ dependencies = [
   "typer>=0.12.0",
 ]
 
-[project.optional-dependencies]
-# Only the Claude Code tracing path needs the Python MLflow runtime; OpenCode
-# and Codex trace via JS plugins. Kept out of the core deps so a plain `ucode`
-# install stays lean. Enable with `uv tool install "ucode[tracing]"`.
-tracing = ["mlflow[databricks]>=3.4"]
-
 [project.scripts]
 ucode = "ucode.cli:main"
 
@@ -38,6 +32,11 @@ packages = ["src/ucode"]
 
 [tool.hatch.version]
 source = "uv-dynamic-versioning"
+
+[[tool.uv.index]]
+name = "lilly"
+url = "https://elilillyco.jfrog.io/artifactory/api/pypi/Lilly-Python/simple"
+default = true
 
 [tool.uv-dynamic-versioning]
 vcs = "git"

@@ -31,36 +31,10 @@ class TestAgentVersion:
         ):
             assert telemetry.agent_version("anything") == "unknown"
 
-    def test_parses_claude_format(self):
-        result = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="2.1.136 (Claude Code)\n", stderr=""
-        )
-        with patch.object(subprocess, "run", return_value=result):
-            assert telemetry.agent_version("claude") == "2.1.136"
-
-    def test_parses_codex_format(self):
-        result = subprocess.CompletedProcess(
-            args=[], returncode=0, stdout="codex-cli 0.123.0-alpha.8\n", stderr=""
-        )
-        with patch.object(subprocess, "run", return_value=result):
-            assert telemetry.agent_version("codex") == "0.123.0-alpha.8"
-
-    def test_parses_gemini_format(self):
-        result = subprocess.CompletedProcess(args=[], returncode=0, stdout="0.40.0\n", stderr="")
-        with patch.object(subprocess, "run", return_value=result):
-            assert telemetry.agent_version("gemini") == "0.40.0"
-
     def test_parses_opencode_format(self):
         result = subprocess.CompletedProcess(args=[], returncode=0, stdout="0.74.0\n", stderr="")
         with patch.object(subprocess, "run", return_value=result):
             assert telemetry.agent_version("opencode") == "0.74.0"
-
-    def test_parses_copilot_format(self):
-        # Copilot prints a banner with the version embedded mid-line.
-        stdout = "GitHub Copilot CLI 1.0.42-0.\nRun 'copilot update' to check for updates.\n"
-        result = subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
-        with patch.object(subprocess, "run", return_value=result):
-            assert telemetry.agent_version("copilot") == "1.0.42-0."
 
     def test_parses_pi_dev_build_format(self):
         result = subprocess.CompletedProcess(

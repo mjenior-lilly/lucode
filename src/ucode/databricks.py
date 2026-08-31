@@ -464,114 +464,6 @@ def get_current_user_name(workspace: str, token: str) -> str | None:
     return None
 
 
-# Experiment tag Databricks sets when an experiment's traces are written to a
-# Unity Catalog table. Its value is the UC destination, e.g.
-# "my_catalog.my_schema.my_table". A plain (file/DBFS-backed) experiment does
-# not carry this tag, so its presence is our signal that traces land in UC.
-UC_TRACE_DESTINATION_TAG = "mlflow.experiment.databricksTraceDestinationPath"
-
-
-def _experiment_tags(experiment: dict) -> dict[str, str | None]:
-    """Flatten an experiment's ``tags`` list ([{key, value}, ...]) into a dict."""
-    out: dict[str, str | None] = {}
-    tags = experiment.get("tags")
-    if isinstance(tags, list):
-        for tag in tags:
-            if isinstance(tag, dict) and isinstance(tag.get("key"), str):
-                out[tag["key"]] = tag.get("value")
-    return out
-
-
-def _uc_trace_destination(experiment: dict) -> str | None:
-    """The Unity Catalog destination (``catalog.schema.table``) an experiment
-    logs traces to, or None when it isn't UC-backed. Any three-part UC name
-    qualifies — the specific catalog/schema/table is not constrained."""
-    value = _experiment_tags(experiment).get(UC_TRACE_DESTINATION_TAG)
-    if isinstance(value, str):
-        parts = value.split(".")
-        if len(parts) == 3 and all(parts):
-            return value
-    return None
-
-
-def find_uc_backed_experiment(
-    workspace: str, token: str, leaf_name: str
-) -> tuple[dict | None, str | None]:
-    """Find an existing experiment whose final path segment is ``leaf_name`` and
-    whose traces are backed by Unity Catalog.
-
-    Returns (experiment, reason). On success ``experiment`` is
-    ``{"experiment_id", "experiment_name", "uc_destination"}`` and reason is
-    None. On failure ``experiment`` is None and reason explains why (no such
-    experiment, or it exists but isn't UC-backed) so the caller can tell the
-    user to create one."""
-    hostname = workspace_hostname(workspace)
-    # Leaf-match in the filter (anything ending in the name), then confirm the
-    # exact leaf segment in Python so "/Users/<me>/ucode-traces" matches but
-    # "team-ucode-traces" does not.
-    safe_leaf = leaf_name.replace("'", "")
-    payload, reason = _http_post_json(
-        f"https://{hostname}/api/2.0/mlflow/experiments/search",
-        token,
-        {"filter": f"name LIKE '%{safe_leaf}'", "max_results": 1000},
-    )
-    if not isinstance(payload, dict):
-        return None, reason or "could not search MLflow experiments"
-
-    experiments = payload.get("experiments")
-    named = [
-        exp
-        for exp in (experiments if isinstance(experiments, list) else [])
-        if isinstance(exp, dict)
-        and str(exp.get("name") or "").rsplit("/", 1)[-1] == leaf_name
-        and exp.get("experiment_id")
-    ]
-    if not named:
-        return None, f"no experiment named '{leaf_name}' exists on this workspace"
-
-    for exp in named:
-        dest = _uc_trace_destination(exp)
-        if dest:
-            return {
-                "experiment_id": str(exp["experiment_id"]),
-                "experiment_name": str(exp.get("name") or leaf_name),
-                "uc_destination": dest,
-            }, None
-
-    return (
-        None,
-        f"experiment '{leaf_name}' exists but its traces are not backed by Unity Catalog",
-    )
-
-
-def resolve_sql_warehouse_id(workspace: str, token: str) -> tuple[str | None, str | None]:
-    """Pick a SQL warehouse for writing traces to a UC-backed experiment.
-
-    Writing traces to a Unity Catalog table requires a SQL warehouse
-    (``MLFLOW_TRACING_SQL_WAREHOUSE_ID``); without one the MLflow exporter
-    silently drops them. We prefer a RUNNING warehouse so the first trace isn't
-    blocked on a cold start, falling back to any existing warehouse (a stopped
-    one auto-starts on first query). Returns (warehouse_id, reason); reason is
-    None on success, else explains why none could be resolved."""
-    hostname = workspace_hostname(workspace)
-    payload, reason = _http_get_json(f"https://{hostname}/api/2.0/sql/warehouses", token)
-    if not isinstance(payload, dict):
-        return None, reason or "could not list SQL warehouses"
-
-    warehouses = payload.get("warehouses")
-    warehouses = (
-        [w for w in warehouses if isinstance(w, dict) and w.get("id")]
-        if isinstance(warehouses, list)
-        else []
-    )
-    if not warehouses:
-        return None, "no SQL warehouse exists on this workspace"
-
-    running = next((w for w in warehouses if str(w.get("state")).upper() == "RUNNING"), None)
-    chosen = running or warehouses[0]
-    return str(chosen["id"]), None
-
-
 @overload
 def run(
     args: list[str],
@@ -1297,9 +1189,9 @@ def build_auth_shell_command(
 ) -> str:
     """Single-line, shell-quoted form of :func:`build_auth_token_argv`.
 
-    Used where a tool wants the helper as one command *string* (Claude Code's
-    `apiKeyHelper`). On every platform this resolves to the `ucode auth-token`
-    executable rather than a POSIX shell pipeline, so no `sh`/`jq` is required."""
+    Used by the derived Pi state contract, which exposes the helper as one command
+    string. On every platform this resolves to the `ucode auth-token` executable
+    rather than a POSIX shell pipeline, so no `sh`/`jq` is required."""
     argv = build_auth_token_argv(workspace, profile, use_pat=use_pat)
     if platform.system() == "Windows":
         return subprocess.list2cmdline(argv)
@@ -1319,11 +1211,11 @@ _MODEL_SERVICE_REQUIRED_PREFIX = "system.ai."
 # support a new family.
 _OSS_MODEL_FAMILIES = ("kimi-", "glm-")
 
-# Claude model families ucode buckets, newest tier first. Each maps to a
-# Claude Code family alias (ANTHROPIC_DEFAULT_<FAMILY>_MODEL). Add an entry to
+# Claude model families ucode buckets, newest tier first. Add an entry to
 # support a new family in both discovery paths (`claude-<family>-*` via the
 # model-services listing and `databricks-claude-<family>-*` via the AI Gateway).
-ANTHROPIC_FAMILIES = ("fable", "opus", "sonnet", "haiku")
+# Fable is deliberately excluded: neither surviving harness supports it.
+ANTHROPIC_FAMILIES = ("opus", "sonnet", "haiku")
 
 
 def classify_model_family(model_id: str) -> str | None:
@@ -1415,34 +1307,16 @@ def _get_model_services_page(
 
 
 # Successful model-service listings for this process, keyed by workspace. The listing is a paginated
-# walk of the whole metastore catalog, and several callers want different views of the same result
-# (`discover_model_services` buckets it per family, `discover_claude_models_unbucketed` keeps the raw
-# Claude ids), so a single `ucode setup` run would otherwise page it twice. Cached per process, not
-# persisted: a long-lived process is not a thing here, and a new model appearing mid-command is not
-# worth a second walk. Failures are never cached, so a transient error still retries.
+# walk of the whole metastore catalog, and several callers want different views of the same result,
+# so a single `ucode setup` run would otherwise page it twice. Cached per process, not persisted: a
+# long-lived process is not a thing here, and a new model appearing mid-command is not worth a
+# second walk. Failures are never cached, so a transient error still retries.
 _MODEL_SERVICES_CACHE: dict[str, list[str]] = {}
-
-# Same idea for the Model Provider Service listing (a different endpoint). It is workspace-wide and
-# filtered per agent afterwards, so `ucode setup` would otherwise re-list it once per MPS-capable
-# agent. Keyed by ``(workspace, parent)`` — a schema-scoped listing is a different result set than
-# the metastore-wide one, so they must not share an entry.
-_MODEL_PROVIDER_SERVICES_CACHE: dict[tuple[str, str], list[dict]] = {}
 
 
 def clear_model_services_cache() -> None:
     """Forget cached model-service listings (used by tests, and after a workspace switch)."""
     _MODEL_SERVICES_CACHE.clear()
-    _MODEL_PROVIDER_SERVICES_CACHE.clear()
-
-
-def has_cached_model_provider_services(workspace: str, parent: str | None = None) -> bool:
-    """True when :func:`list_model_provider_services` will answer from cache.
-
-    Lets a caller skip a progress spinner it doesn't need: the cold listing takes over a second, so
-    it deserves one, but repeating it per agent on an instant cache hit is just noise. Takes
-    ``parent`` for the same reason the cache is keyed on it — a scoped listing is a separate entry.
-    """
-    return (workspace, parent or "") in _MODEL_PROVIDER_SERVICES_CACHE
 
 
 def list_model_services(
@@ -1507,20 +1381,6 @@ def list_model_services(
     return [], last_reason or "model-services listing returned no models"
 
 
-def discover_claude_models_unbucketed(workspace: str, token: str) -> tuple[list[str], str | None]:
-    """Every `system.ai.claude-*` id on the workspace, unbucketed.
-
-    `discover_model_services` keeps only the newest id per family because the launch path pins one
-    model per Claude family alias. An admin authoring a managed config needs the alternatives too
-    (see `managed_setup.claude_family_candidates`), so this returns the full set without disturbing
-    that shape.
-    """
-    ids, reason = list_model_services(workspace, token)
-    if not ids:
-        return [], reason
-    return [m for m in ids if "claude-" in m.lower()], None
-
-
 def discover_model_services(
     workspace: str, token: str
 ) -> tuple[dict[str, str], list[str], list[str], list[str], str | None]:
@@ -1528,7 +1388,7 @@ def discover_model_services(
 
     Returns (claude_models, codex_models, gemini_models, oss_models, reason):
 
-    - ``claude_models`` maps ``fable``/``opus``/``sonnet``/``haiku`` to the
+    - ``claude_models`` maps ``opus``/``sonnet``/``haiku`` to the
       newest matching ``system.ai.claude-*`` id (mirrors
       ``discover_claude_models``).
     - ``codex_models`` is the list of ``system.ai.*gpt-*`` ids.
@@ -1626,7 +1486,6 @@ MANAGED_CONFIG_UPDATE_MASK_PATHS: tuple[str, ...] = (
     "enabled_agents",
     "mcp_servers",
     "skills",
-    "tracing",
     "budget_policy",
 )
 
@@ -1774,310 +1633,6 @@ def build_skills_mcp_url(workspace: str, locations: list[str]) -> str:
     if not locations:
         return base
     return base + "?" + urlencode([("schema", loc) for loc in locations])
-
-
-# Maps the gateway routing dialect a coding tool speaks to the Model Provider
-# Service `provider_type`s it can be backed by. claude speaks Anthropic's API,
-# which both the `anthropic` and `amazon_bedrock` provider types serve (Bedrock
-# just exposes different model ids); codex speaks OpenAI's. Tags are the short
-# form produced by `_provider_type_tag` (e.g. `amazon_bedrock`).
-_TOOL_PROVIDER_TYPES: dict[str, tuple[str, ...]] = {
-    "claude": ("anthropic", "amazon_bedrock"),
-    "codex": ("openai",),
-}
-
-# Provider types that expose Bedrock-style model ids (e.g.
-# `us.anthropic.claude-sonnet-4-6`) instead of the agent's canonical model
-# names, so ucode must pin them explicitly.
-BEDROCK_PROVIDER_TYPES: tuple[str, ...] = ("amazon_bedrock",)
-
-
-def tool_supports_provider_type(tool: str, provider_type: str) -> bool:
-    """True when ``tool``'s API dialect can be backed by ``provider_type``."""
-    return provider_type in _TOOL_PROVIDER_TYPES.get(tool, ())
-
-
-def _provider_type_tag(provider_type: str | None) -> str:
-    """Shorten `EXTERNAL_MODEL_PROVIDER_TYPE_ANTHROPIC` to `anthropic`."""
-    if not isinstance(provider_type, str):
-        return ""
-    prefix = "EXTERNAL_MODEL_PROVIDER_TYPE_"
-    tag = provider_type[len(prefix) :] if provider_type.startswith(prefix) else provider_type
-    return tag.lower()
-
-
-# The listing is paginated; a metastore with more services than one page silently truncated before
-# this was honored, making services on later pages look nonexistent.
-_PROVIDER_SERVICES_PAGE_SIZE = 100
-_PROVIDER_SERVICES_MAX_PAGES = 50
-
-
-def list_model_provider_services(
-    workspace: str, token: str, *, parent: str | None = None, use_cache: bool = True
-) -> tuple[list[dict], str | None]:
-    """List Unity Catalog Model Provider Services on the workspace.
-
-    Returns ``(services, reason)`` where each service is
-    ``{"name": "<catalog>.<schema>.<service>", "provider_type": "anthropic"|...,
-    "targets": [model_id, ...], "allow_all_targets": bool, "relayed": bool}``.
-    ``targets`` is the provider-side model ids the service exposes (used to pin
-    Bedrock model names). ``relayed`` is True for a credential-less Anthropic
-    service (Claude Max/Team/Enterprise subscription relay). A non-None
-    ``reason`` means the listing call itself failed.
-
-    Pages through the endpoint: a metastore with more services than fit on one page used to have the
-    remainder silently dropped, so a service that plainly existed looked absent. ``parent`` scopes
-    the listing to one ``catalog.schema`` — the metastore-wide default is documented as an internal,
-    likely-to-be-deprecated scope, so prefer passing it when the schema is known.
-
-    A successful result is memoized per workspace for the life of the process, like the
-    model-services listing: the listing is workspace-wide (filtered per agent afterwards by
-    :func:`service_usable_for_tool`), so without the memo `ucode setup` re-lists it once per
-    MPS-capable agent. Pass ``use_cache=False`` to force a fresh call.
-    """
-    # Keyed by workspace *and* parent: a `parent`-scoped listing holds only that schema's services,
-    # so caching it under the workspace alone would serve a partial list to an unscoped caller (and
-    # vice versa) — a service that plainly exists would look absent, the same failure pagination was
-    # added to fix.
-    cache_key = (workspace, parent or "")
-    if use_cache:
-        cached = _MODEL_PROVIDER_SERVICES_CACHE.get(cache_key)
-        if cached is not None:
-            # A fresh list of fresh dicts each time: callers treat the result as theirs (the wizard
-            # filters it per agent), so handing out the cached objects would let one caller's edit
-            # reach the next.
-            return [dict(service) for service in cached], None
-
-    hostname = workspace_hostname(workspace)
-    services: list[dict] = []
-    page_token: str | None = None
-    seen_tokens: set[str] = set()
-    last_reason: str | None = None
-    for _ in range(_PROVIDER_SERVICES_MAX_PAGES):
-        params: dict[str, str] = {"page_size": str(_PROVIDER_SERVICES_PAGE_SIZE)}
-        if parent:
-            params["parent"] = f"schemas/{parent}"
-        if page_token:
-            params["page_token"] = page_token
-        url = (
-            f"https://{hostname}/api/2.1/unity-catalog/model-provider-services?{urlencode(params)}"
-        )
-        payload, reason = _http_get_json(url, token, timeout=30)
-        if payload is None:
-            # Surface the failure only if we have nothing yet; a mid-pagination blip still
-            # returns whatever was collected.
-            last_reason = reason
-            break
-        data = cast(dict, payload) if isinstance(payload, dict) else {}
-        for service in data.get("model_provider_services") or []:
-            entry = _provider_service_entry(service)
-            if entry is not None:
-                services.append(entry)
-        page_token = data.get("next_page_token") or None
-        if not page_token:
-            last_reason = None
-            break
-        if page_token in seen_tokens:
-            break
-        seen_tokens.add(page_token)
-
-    if not services and last_reason is not None:
-        return [], last_reason
-    services.sort(key=lambda s: s["name"])
-    if use_cache:
-        _MODEL_PROVIDER_SERVICES_CACHE[cache_key] = [dict(service) for service in services]
-    return services, None
-
-
-def _provider_service_entry(raw_service: object) -> dict | None:
-    """Normalize one listing entry, or None when it isn't usable."""
-    if not isinstance(raw_service, dict):
-        return None
-    # A bare isinstance narrows to dict[Never, Never], which rejects string keys.
-    service = cast("dict[str, object]", raw_service)
-    raw_name = service.get("name")
-    if not isinstance(raw_name, str) or not raw_name:
-        return None
-    # The API returns `model-provider-services/<catalog>.<schema>.<name>`.
-    full_name = raw_name.split("/", 1)[1] if "/" in raw_name else raw_name
-    raw_config = service.get("config")
-    config = cast("dict[str, object]", raw_config) if isinstance(raw_config, dict) else {}
-    targets: list[str] = []
-    raw_targets = config.get("targets")
-    for target in raw_targets if isinstance(raw_targets, list) else []:
-        if not isinstance(target, dict):
-            continue
-        model_id = cast("dict[str, object]", target).get("model")
-        if isinstance(model_id, str) and model_id:
-            targets.append(model_id)
-    # Relayed = credential-less Anthropic (subscription relay). Only whether
-    # it's relayed matters here; the tier (Max vs Team/Enterprise) is governed
-    # server-side, so both launch identically.
-    anthropic_cfg = config.get("anthropic")
-    relayed = isinstance(anthropic_cfg, dict) and "relayed" in anthropic_cfg
-    raw_type = config.get("provider_type")
-    return {
-        "name": full_name,
-        "provider_type": _provider_type_tag(raw_type if isinstance(raw_type, str) else None),
-        "targets": targets,
-        "allow_all_targets": bool(config.get("allow_all_targets")),
-        "relayed": relayed,
-    }
-
-
-def get_model_provider_service(
-    service_name: str, workspace: str, token: str
-) -> tuple[dict | None, str | None]:
-    """Fetch one provider service by its full `catalog.schema.name`, bypassing the listing.
-
-    The listing is paginated and metastore-wide, so any gap in it (a page we failed to fetch, a
-    server-side filter) makes a service that plainly exists look absent. Addressing it directly
-    removes that whole class of false negative.
-    """
-    hostname = workspace_hostname(workspace)
-    url = f"https://{hostname}/api/2.1/unity-catalog/model-provider-services/{service_name}"
-    payload, reason = _http_get_json(url, token, timeout=30)
-    if payload is None:
-        return None, reason
-    entry = _provider_service_entry(payload)
-    if entry is None:
-        return None, "model-provider-service response had an unexpected shape"
-    return entry, None
-
-
-def is_model_provider_feature_unavailable(reason: str | None) -> bool:
-    """True when a model-provider-services API failure means the workspace
-    simply hasn't enabled the feature (HTTP 400 "feature is not available"),
-    as opposed to a transient or auth error. Callers use this to fall back to
-    Databricks models silently rather than surfacing a scary error.
-    """
-    return bool(reason) and "feature is not available" in reason.lower()
-
-
-def list_tool_provider_services(
-    tool: str, workspace: str, token: str
-) -> tuple[list[str], str | None]:
-    """Provider-service names whose provider type matches ``tool``'s API dialect.
-
-    Returns ``(names, reason)``; ``reason`` is non-None when the listing failed.
-    """
-    services, reason = list_model_provider_services(workspace, token)
-    if reason is not None:
-        return [], reason
-    names = [s["name"] for s in services if service_usable_for_tool(tool, s)]
-    return names, None
-
-
-def service_usable_for_tool(tool: str, service: dict) -> bool:
-    """True when ``tool`` can actually route through ``service``.
-
-    Beyond the provider-type match, a Bedrock service is only usable for claude
-    if it exposes at least one Claude model in its targets — otherwise there's no
-    routable model id to pin. (Anthropic services use canonical names, so any
-    match is usable.)
-    """
-    provider_type = service.get("provider_type", "")
-    if not tool_supports_provider_type(tool, provider_type):
-        return False
-    if provider_type in BEDROCK_PROVIDER_TYPES:
-        return bool(map_bedrock_claude_models(service.get("targets") or []))
-    return True
-
-
-def resolve_provider_service(
-    tool: str, service_name: str, workspace: str, token: str
-) -> tuple[dict | None, str | None]:
-    """Validate that ``service_name`` exists and is usable by ``tool``.
-
-    Returns ``(service, error)``. On success ``service`` is the full service
-    dict (``name``/``provider_type``/``targets``/``allow_all_targets``) and
-    ``error`` is None. On failure ``service`` is None and ``error`` is an
-    actionable message: the feature is off, the listing failed, the service
-    doesn't exist, or its provider type isn't one ``tool`` can route to (e.g.
-    pointing claude at an OpenAI service).
-    """
-    services, reason = list_model_provider_services(workspace, token)
-    if is_model_provider_feature_unavailable(reason):
-        return None, "Model Provider Service feature is not available yet for this workspace."
-    if reason is not None:
-        return None, f"Could not list model provider services: {reason}"
-    match = next((s for s in services if s["name"] == service_name), None)
-    if match is None:
-        # Don't conclude "not found" from a listing that may be incomplete — a named service can be
-        # fetched directly. Only when that 404s is it really absent.
-        match, get_reason = get_model_provider_service(service_name, workspace, token)
-        if match is None:
-            usable = [
-                s["name"] for s in services if tool_supports_provider_type(tool, s["provider_type"])
-            ]
-            suffix = f" Available for {tool}: {', '.join(usable)}." if usable else ""
-            detail = f" ({get_reason})" if get_reason and "404" not in get_reason else ""
-            return None, f"Model provider service '{service_name}' was not found.{detail}{suffix}"
-    provider_type = match["provider_type"]
-    if not tool_supports_provider_type(tool, provider_type):
-        supported = ", ".join(_TOOL_PROVIDER_TYPES.get(tool, ())) or "none"
-        return None, (
-            f"Model provider service '{service_name}' is a '{provider_type}' provider, "
-            f"which {tool} can't route to (supported: {supported})."
-        )
-    if provider_type in BEDROCK_PROVIDER_TYPES and not map_bedrock_claude_models(
-        match.get("targets") or []
-    ):
-        return None, (
-            f"Model provider service '{service_name}' exposes no Claude models — "
-            f"add Claude targets to it or pick a different service."
-        )
-    return match, None
-
-
-# Bedrock exposes Claude under provider-side ids like
-# `us.anthropic.claude-sonnet-4-6`, `global.anthropic.claude-opus-4-8`, or the
-# region-less `anthropic.claude-opus-4-8`. We map each service target to a
-# Claude family and keep the best id per family. Claude Code only takes one
-# default per family; users switch to any other listed region profile at runtime
-# with `/model <full-id>` or `--model`.
-_BEDROCK_CLAUDE_FAMILIES = ("opus", "sonnet", "haiku")
-# When the same model/version is offered under several cross-region inference
-# profiles, prefer the broadest-routing one as the pinned default.
-_BEDROCK_REGION_RANK = {"global": 5, "us": 4, "eu": 3, "apac": 2, "": 1}
-
-
-def _bedrock_target_family(model_id: str) -> str | None:
-    lowered = model_id.lower()
-    if "claude" not in lowered:
-        return None
-    return next((fam for fam in _BEDROCK_CLAUDE_FAMILIES if fam in lowered), None)
-
-
-def _bedrock_region_rank(model_id: str) -> int:
-    """Rank a target's cross-region inference profile (`us.`/`eu.`/`global.`/
-    region-less) so ties on model version resolve deterministically."""
-    head = model_id.lower().split("anthropic.", 1)[0].rstrip(".")
-    return _BEDROCK_REGION_RANK.get(head, 0)
-
-
-def _bedrock_sort_key(model_id: str) -> tuple:
-    """Order targets best-first: highest model version, then preferred region."""
-    version = tuple(int(n) for n in re.findall(r"\d+", model_id))
-    return (version, _bedrock_region_rank(model_id))
-
-
-def map_bedrock_claude_models(targets: list[str]) -> dict[str, str]:
-    """Map Bedrock service targets to ``{family: model_id}`` for opus/sonnet/
-    haiku, choosing the highest-versioned id per family and, on a version tie,
-    the broadest-routing region profile. Targets that don't name a Claude family
-    are ignored."""
-    best_key: dict[str, tuple] = {}
-    result: dict[str, str] = {}
-    for model_id in targets:
-        family = _bedrock_target_family(model_id)
-        if not family:
-            continue
-        key = _bedrock_sort_key(model_id)
-        if family not in best_key or key > best_key[family]:
-            best_key[family] = key
-            result[family] = model_id
-    return result
 
 
 # `list_vector_search_catalog_schemas` walks Vector Search endpoints+indexes.
@@ -2503,12 +2058,6 @@ def discover_claude_models(workspace: str, token: str) -> tuple[dict[str, str], 
     )
 
 
-def fetch_ai_gateway_claude_models(workspace: str, token: str) -> dict[str, str]:
-    """Backwards-compatible wrapper that discards the diagnostic reason."""
-    models, _ = discover_claude_models(workspace, token)
-    return models
-
-
 def model_version_sort_key(name: str) -> tuple:
     """Sort endpoint names so newer model versions come first.
 
@@ -2586,12 +2135,6 @@ def discover_endpoints_with_api_type(
     return [], f"no endpoint exposes api_type `{api_type}`"
 
 
-def _fetch_endpoints_with_api_type(workspace: str, token: str, api_type: str) -> list[str]:
-    """Backwards-compatible wrapper that discards the diagnostic reason."""
-    endpoints, _ = discover_endpoints_with_api_type(workspace, token, api_type)
-    return endpoints
-
-
 def discover_gemini_models(workspace: str, token: str) -> tuple[list[str], str | None]:
     # Order newest model version first so `default_model()` (which picks the
     # first entry) launches e.g. gemini-3.5-flash rather than gemini-2.5-flash.
@@ -2602,16 +2145,6 @@ def discover_gemini_models(workspace: str, token: str) -> tuple[list[str], str |
 
 def discover_codex_models(workspace: str, token: str) -> tuple[list[str], str | None]:
     return discover_endpoints_with_api_type(workspace, token, "openai/v1/responses")
-
-
-def fetch_gemini_models(workspace: str, token: str) -> list[str]:
-    models, _ = discover_gemini_models(workspace, token)
-    return models
-
-
-def fetch_codex_models(workspace: str, token: str) -> list[str]:
-    models, _ = discover_codex_models(workspace, token)
-    return models
 
 
 def ensure_ai_gateway_v2(workspace: str, token: str) -> None:
@@ -2855,10 +2388,6 @@ def build_tool_base_url(tool: str, workspace: str) -> str:
         raise RuntimeError(
             "OpenCode has multiple base URLs — use build_opencode_base_urls() instead."
         )
-    if tool == "copilot":
-        raise RuntimeError(
-            "Copilot has multiple base URLs — use build_copilot_base_urls() instead."
-        )
     if tool == "pi":
         raise RuntimeError("Pi has multiple base URLs — use build_pi_base_urls() instead.")
     raise RuntimeError(f"Unsupported tool '{tool}'.")
@@ -2891,21 +2420,9 @@ def build_pi_base_urls(workspace: str) -> dict[str, str]:
     }
 
 
-def build_copilot_base_url(workspace: str) -> str:
-    # Copilot CLI's `openai` provider appends `/chat/completions` to the
-    # configured base URL. The Databricks MLflow chat-completions gateway is
-    # OpenAI-compatible and serves Claude, codex (gpt-5), and gemini models
-    # behind one URL.
-    return f"{workspace}/ai-gateway/mlflow/v1"
-
-
 def build_shared_base_urls(workspace: str) -> dict[str, str | dict[str, str]]:
     urls: dict[str, str | dict[str, str]] = {
-        "codex": build_tool_base_url("codex", workspace),
-        "claude": build_tool_base_url("claude", workspace),
-        "gemini": build_tool_base_url("gemini", workspace),
         "opencode": build_opencode_base_urls(workspace),
-        "copilot": build_copilot_base_url(workspace),
         "pi": build_pi_base_urls(workspace),
     }
     return urls

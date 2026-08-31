@@ -221,12 +221,12 @@ class TestFetchSkillBundle:
 class TestSkillDirRoots:
     def test_roots_under_project_dir(self, tmp_path):
         roots = skill_dir_roots(str(tmp_path))
-        assert roots == [tmp_path / ".claude/skills", tmp_path / ".agents/skills"]
+        assert roots == [tmp_path / ".agents/skills"]
 
     def test_defaults_to_home_when_omitted(self, tmp_path, monkeypatch):
         monkeypatch.setattr(sd.Path, "home", classmethod(lambda cls: tmp_path))
         roots = skill_dir_roots(None)
-        assert roots == [tmp_path / ".claude/skills", tmp_path / ".agents/skills"]
+        assert roots == [tmp_path / ".agents/skills"]
 
     def test_relative_path_rejected(self):
         with pytest.raises(ValueError, match="absolute"):
@@ -308,7 +308,7 @@ class TestDownloadSkills:
 
         sd.download_skills(WS, "token", ["main.default"], str(tmp_path))
 
-        assert (tmp_path / ".claude/skills/pii-handling/SKILL.md").read_bytes() == b"pii"
+        assert (tmp_path / ".agents/skills/pii-handling/SKILL.md").read_bytes() == b"pii"
         assert (tmp_path / ".agents/skills/triage/SKILL.md").read_bytes() == b"triage"
 
     def test_list_failure_skips_location(self, tmp_path, monkeypatch):
@@ -334,8 +334,8 @@ class TestDownloadSkills:
 
         sd.download_skills(WS, "token", ["main.default"], str(tmp_path))
 
-        assert (tmp_path / ".claude/skills/good/SKILL.md").read_bytes() == b"ok"
-        assert not (tmp_path / ".claude/skills/bad").exists()
+        assert (tmp_path / ".agents/skills/good/SKILL.md").read_bytes() == b"ok"
+        assert not (tmp_path / ".agents/skills/bad").exists()
 
     def test_prints_downloaded_count_and_roots_summary(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setattr(sd, "list_schema_skills", lambda *a, **k: (["a", "b", "c"], None))
@@ -345,7 +345,7 @@ class TestDownloadSkills:
 
         # Rich wraps long paths across lines; strip all whitespace from both sides to compare.
         roots = sd.skill_dir_roots(str(tmp_path))
-        expected = f"Downloaded 3/3 skill(s) from `main.default` in {roots[0]} and {roots[1]}."
+        expected = f"Downloaded 3/3 skill(s) from `main.default` in {roots[0]}."
         printed = "".join(capsys.readouterr().out.split())
         assert "".join(expected.split()) in printed
 
@@ -371,8 +371,8 @@ class TestDownloadSkills:
 
         sd.download_skills(WS, "token", ["main.default"], str(tmp_path), {"triage"})
 
-        assert (tmp_path / ".claude/skills/triage/SKILL.md").read_bytes() == b"x"
-        assert not (tmp_path / ".claude/skills/pii-handling").exists()
+        assert (tmp_path / ".agents/skills/triage/SKILL.md").read_bytes() == b"x"
+        assert not (tmp_path / ".agents/skills/pii-handling").exists()
 
     def test_skill_filter_warns_on_unknown_and_downloads_rest(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setattr(sd, "list_schema_skills", lambda *a, **k: (["triage"], None))
@@ -382,7 +382,7 @@ class TestDownloadSkills:
 
         out = capsys.readouterr().out
         assert "Skipping requested skill(s) not found in `main.default`: ghost" in out
-        assert (tmp_path / ".claude/skills/triage/SKILL.md").read_bytes() == b"x"
+        assert (tmp_path / ".agents/skills/triage/SKILL.md").read_bytes() == b"x"
 
     def test_empty_skill_filter_downloads_nothing(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setattr(sd, "list_schema_skills", lambda *a, **k: (["triage"], None))
@@ -394,7 +394,7 @@ class TestDownloadSkills:
         sd.download_skills(WS, "token", ["main.default"], str(tmp_path), set())
 
         assert called == []
-        assert not (tmp_path / ".claude/skills/triage").exists()
+        assert not (tmp_path / ".agents/skills/triage").exists()
         # The schema has skills; the filter selected none — distinct from the
         # empty-schema note.
         out = capsys.readouterr().out
@@ -414,8 +414,8 @@ class TestDownloadSkills:
 
         sd.download_skills(WS, "token", ["main.default"], str(tmp_path), None)
 
-        assert (tmp_path / ".claude/skills/a/SKILL.md").exists()
-        assert (tmp_path / ".claude/skills/b/SKILL.md").exists()
+        assert (tmp_path / ".agents/skills/a/SKILL.md").exists()
+        assert (tmp_path / ".agents/skills/b/SKILL.md").exists()
 
 
 class TestConfigureSkillsDownloadCommand:
@@ -423,7 +423,7 @@ class TestConfigureSkillsDownloadCommand:
         calls: dict[str, object] = {}
         monkeypatch.setattr(sd, "load_state", lambda: {"state": True})
         monkeypatch.setattr(
-            sd, "setup_mcp_clients", lambda state, section: (WS, "profile", ["claude"])
+            sd, "setup_mcp_clients", lambda state, section: (WS, "profile", ["opencode"])
         )
         monkeypatch.setattr(sd, "get_databricks_token", lambda ws, profile: "token")
         monkeypatch.setattr(
@@ -446,7 +446,7 @@ class TestConfigureSkillsDownloadCommand:
         assert sd.configure_skills_download_command(["a.b"], path="/tmp/skills") == 0
 
         assert calls["download"] == (WS, "token", ["a.b"], "/tmp/skills", None)
-        assert calls["register"] == (WS, "profile", ["claude"])
+        assert calls["register"] == (WS, "profile", ["opencode"])
 
     def test_none_path_threads_through(self, monkeypatch):
         calls = self._stub(monkeypatch)
@@ -454,7 +454,7 @@ class TestConfigureSkillsDownloadCommand:
         assert sd.configure_skills_download_command(["a.b"], path=None) == 0
 
         assert calls["download"] == (WS, "token", ["a.b"], None, None)
-        assert calls["register"] == (WS, "profile", ["claude"])
+        assert calls["register"] == (WS, "profile", ["opencode"])
 
     def test_skills_filter_threads_through(self, monkeypatch):
         calls = self._stub(monkeypatch)
@@ -462,4 +462,4 @@ class TestConfigureSkillsDownloadCommand:
         assert sd.configure_skills_download_command(["a.b"], path=None, skills={"triage"}) == 0
 
         assert calls["download"] == (WS, "token", ["a.b"], None, {"triage"})
-        assert calls["register"] == (WS, "profile", ["claude"])
+        assert calls["register"] == (WS, "profile", ["opencode"])

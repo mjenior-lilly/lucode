@@ -30,11 +30,7 @@ from pathlib import Path
 from typing import cast
 
 import ucode.config_io as config_io
-from ucode.databricks import (
-    ANTHROPIC_FAMILIES,
-    model_version_sort_key,
-    tool_supports_provider_type,
-)
+from ucode.databricks import ANTHROPIC_FAMILIES
 from ucode.managed_config import (
     AGENT_ENUM_TO_TOOL,
     MCP_TYPE_ENUM_TO_TAG,
@@ -48,26 +44,11 @@ MANAGED_SETTINGS_PATH = config_io.APP_DIR / "managed-settings.json"
 AGENT_TOOL_TO_ENUM: dict[str, str] = {tool: enum for enum, tool in AGENT_ENUM_TO_TOOL.items()}
 MCP_TAG_TO_TYPE_ENUM: dict[str, str] = {tag: enum for enum, tag in MCP_TYPE_ENUM_TO_TAG.items()}
 
-# Agents whose model config carries a flat `models` list. Claude instead uses per-family slots
-# (`ClaudeDefaultModels`), and Codex has no model list at all — it selects exactly one model.
-_FLAT_MODEL_LIST_AGENTS = frozenset({"opencode", "pi", "gemini", "copilot"})
-
-# Claude family slot names in `ClaudeDefaultModels`, keyed by ucode's family name. Public because
-# the wizard prompts one slot at a time.
-CLAUDE_SLOT_FOR_FAMILY: dict[str, str] = {
-    family: f"default_{family}_model" for family in ANTHROPIC_FAMILIES
-}
-
-# Which discovered model families each agent may be configured with, on the Databricks-hosted path.
-# Claude Code only speaks the Anthropic dialect, Gemini CLI only Gemini; Codex's `/v1/models` route
-# serves GPT plus the OSS models; the multi-provider harnesses can use anything discovered.
+# Both surviving agents use flat repeated model lists.
+_FLAT_MODEL_LIST_AGENTS = frozenset({"opencode", "pi"})
 _AGENT_MODEL_FAMILIES: dict[str, tuple[str, ...]] = {
-    "claude": ("claude",),
-    "gemini": ("gemini",),
-    "codex": ("codex", "oss"),
-    "opencode": ("claude", "codex", "gemini", "oss"),
-    "pi": ("claude", "codex", "gemini", "oss"),
-    "copilot": ("claude", "codex", "gemini", "oss"),
+    "opencode": ("claude", "gemini", "oss"),
+    "pi": ("claude", "codex", "gemini"),
 }
 
 
@@ -84,16 +65,6 @@ def _as_dict(value: object) -> dict[str, object]:
 def model_families_for_agent(tool: str) -> tuple[str, ...]:
     """The discovered model families ``tool`` can be configured with."""
     return _AGENT_MODEL_FAMILIES.get(tool, ())
-
-
-def supports_provider_service(tool: str, provider_type: str) -> bool:
-    """True when ``tool`` can route through a ``provider_type`` Model Provider Service.
-
-    Thin pass-through to :func:`ucode.databricks.tool_supports_provider_type` so the wizard has one
-    obvious place to ask. Only claude (anthropic / amazon_bedrock) and codex (openai) have MPS
-    support today; the other harnesses are Databricks-hosted only.
-    """
-    return tool_supports_provider_type(tool, provider_type)
 
 
 def model_options_for_agent(tool: str, state: dict) -> list[str]:
@@ -125,99 +96,17 @@ def model_options_for_agent(tool: str, state: dict) -> list[str]:
     return list(dict.fromkeys(options))
 
 
-def claude_family_for_model(model: str) -> str | None:
-    """The Claude family (``opus``/``sonnet``/``haiku``/``fable``) a model id belongs to, or None.
-
-    Used to place picked Claude models into their `ClaudeDefaultModels` slots. Matches on the
-    family segment so both discovery spellings work (``system.ai.claude-opus-4-8`` and
-    ``databricks-claude-opus-4-8``).
-    """
-    lowered = model.lower()
-    return next((family for family in ANTHROPIC_FAMILIES if f"claude-{family}-" in lowered), None)
-
-
-def claude_family_candidates(
-    all_claude_models: list[str], state: dict | None = None
-) -> dict[str, list[str]]:
-    """Group Claude model ids by family, newest first.
-
-    ``state["claude_models"]`` holds only one id per family — the newest, chosen by
-    ``discover_model_services`` for the launch path, which pins exactly one model per family alias.
-    An admin authoring a managed config needs the alternatives too: pinning ``default_opus_model``
-    to a known-good ``claude-opus-4-8`` rather than whatever happens to be newest is a normal thing
-    to want, and impossible if only the newest is offered.
-
-    ``all_claude_models`` is the unbucketed listing (see
-    :func:`ucode.databricks.discover_claude_family_candidates`). When it is empty, falls back to the
-    per-family picks already in ``state`` so the per-slot prompts still work — with one candidate
-    each. Families with no models are omitted.
-    """
-    models = list(all_claude_models)
-    if not models and state:
-        claude_models = state.get("claude_models")
-        if isinstance(claude_models, dict):
-            models = [m for m in claude_models.values() if isinstance(m, str) and m]
-
-    candidates: dict[str, list[str]] = {}
-    for model in models:
-        family = claude_family_for_model(model)
-        if family:
-            candidates.setdefault(family, []).append(model)
-    for family, found in candidates.items():
-        # model_version_sort_key negates version components, so plain ascending is newest-first.
-        candidates[family] = sorted(set(found), key=model_version_sort_key)
-    return candidates
-
-
-def claude_model_slots(models: list[str]) -> dict[str, str]:
-    """Group picked Claude model ids into ``ClaudeDefaultModels`` slots.
-
-    Claude Code addresses models by family alias rather than by list, so the wizard's multi-select
-    has to be bucketed into ``default_opus_model`` / ``default_sonnet_model`` / etc. Ids whose family
-    can't be identified are skipped; when two ids share a family the first wins (the caller's list
-    order is the admin's preference order).
-    """
-    slots: dict[str, str] = {}
-    for model in models:
-        family = claude_family_for_model(model)
-        if family is None:
-            continue
-        slot = CLAUDE_SLOT_FOR_FAMILY[family]
-        slots.setdefault(slot, model)
-    return slots
-
-
 def _model_config_payload(tool: str, model_config: dict) -> dict:
-    """Build one ``AgentModelConfig`` oneof variant body for ``tool``.
-
-    Shapes per the proto: claude gets `models` as a `ClaudeDefaultModels` slot object, codex gets
-    no model list at all, and the rest get a flat repeated `models`.
-    """
+    """Build a flat-list ``AgentModelConfig`` variant for a surviving tool."""
     body: dict = {}
-    mps = model_config.get("model_provider_service")
-    if isinstance(mps, str) and mps:
-        body["model_provider_service"] = mps
     default_model = model_config.get("default_model")
     if isinstance(default_model, str) and default_model:
         body["default_model"] = default_model
-
     models = model_config.get("models")
-    if tool == "claude":
-        if isinstance(models, dict):
-            slots = {
-                slot: value
-                for slot, value in models.items()
-                if isinstance(slot, str) and isinstance(value, str) and value
-            }
-            if slots:
-                body["models"] = slots
-    elif tool in _FLAT_MODEL_LIST_AGENTS:
-        if isinstance(models, list):
-            model_list = [m for m in models if isinstance(m, str) and m]
-            if model_list:
-                body["models"] = model_list
-    # codex intentionally carries no model list — CodexModelConfig has only
-    # model_provider_service + default_model.
+    if tool in _FLAT_MODEL_LIST_AGENTS and isinstance(models, list):
+        model_list = [m for m in models if isinstance(m, str) and m]
+        if model_list:
+            body["models"] = model_list
     return body
 
 
@@ -232,17 +121,10 @@ def _enabled_agent_payload(tool: str, agent_config: dict) -> dict:
         clean = {k: v for k, v in headers.items() if isinstance(k, str) and isinstance(v, str)}
         if clean:
             config["custom_headers"] = clean
-    tracing_table = agent_config.get("tracing_table")
-    if isinstance(tracing_table, str) and tracing_table:
-        config["tracing_config"] = {"table": tracing_table}
     model_config = agent_config.get("model_config")
     if isinstance(model_config, dict):
         body = _model_config_payload(tool, model_config)
         if body:
-            # The `AgentModelConfig` oneof field names are ucode's tool names verbatim (claude,
-            # codex, opencode, pi, gemini, copilot), so the tool doubles as the variant key. The
-            # server rejects a variant that doesn't match its agent (`validateAgentModelConfig`),
-            # and the round-trip through `normalize_managed_config` pins that alignment in tests.
             config["model_config"] = {tool: body}
 
     entry: dict = {"agent": AGENT_TOOL_TO_ENUM[tool]}
@@ -343,10 +225,6 @@ def serialize_managed_config(manifest: dict) -> dict:
             if skill_names:
                 payload["skills"] = {"names": skill_names}
 
-    tracing_table = manifest.get("tracing_table")
-    if isinstance(tracing_table, str) and tracing_table:
-        payload["tracing"] = {"table": tracing_table}
-
     budget_policy = manifest.get("budget_policy")
     if isinstance(budget_policy, dict):
         policy = _budget_policy_payload(budget_policy)
@@ -387,18 +265,10 @@ def _known_models(state: dict) -> set[str]:
 
 
 def _validate_agent_models(tool: str, agent_config: dict, known: set[str]) -> list[str]:
-    """Check one agent's configured models against the workspace inventory.
-
-    Skipped entirely when the agent routes through a Model Provider Service: those model ids come
-    from the provider's own catalog, not from UC model services, so the workspace inventory says
-    nothing about them.
-    """
+    """Check one agent's configured models against the workspace inventory."""
     model_config = agent_config.get("model_config")
     if not isinstance(model_config, dict):
         return []
-    if model_config.get("model_provider_service"):
-        return []
-
     referenced: list[str] = []
     default_model = model_config.get("default_model")
     if isinstance(default_model, str) and default_model:
@@ -409,11 +279,17 @@ def _validate_agent_models(tool: str, agent_config: dict, known: set[str]) -> li
     elif isinstance(models, list):
         referenced.extend(m for m in models if isinstance(m, str) and m)
 
-    return [
+    errors = [
         f"{tool}: model '{model}' is not available on this workspace."
         for model in dict.fromkeys(referenced)
-        if model not in known
+        if known and model not in known
     ]
+    errors.extend(
+        f"{tool}: Fable model '{model}' is not supported."
+        for model in dict.fromkeys(referenced)
+        if "fable" in model.lower()
+    )
+    return errors
 
 
 def validate_manifest(manifest: dict, state: dict | None = None) -> list[str]:
@@ -426,14 +302,12 @@ def validate_manifest(manifest: dict, state: dict | None = None) -> list[str]:
       ``enabled_agents``, and that agent must have a non-empty ``default_model``;
     - every ``enabled_agents`` key must be an agent this ucode build knows;
     - each MCP server needs a name and a recognized type; skill names must be non-empty;
-    - ``tracing_table`` must be non-empty when the key is present;
     - a ``budget_policy`` needs a ``budget_id``, and each tier needs a ``spending_percentage`` in
       [0, 1] (unique across tiers), a ``default_agent`` that appears in ``enabled_agents``, and a
       ``default_model``.
 
     When ``state`` is provided, configured models are additionally checked against the workspace's
-    discovered inventory — skipped for agents routing through a Model Provider Service, and skipped
-    entirely when discovery returned nothing.
+    discovered inventory.
     """
     errors: list[str] = []
 
@@ -466,9 +340,8 @@ def validate_manifest(manifest: dict, state: dict | None = None) -> list[str]:
             )
 
     known = _known_models(state or {})
-    if known:
-        for tool, agent_config in enabled_agents.items():
-            errors.extend(_validate_agent_models(tool, agent_config, known))
+    for tool, agent_config in enabled_agents.items():
+        errors.extend(_validate_agent_models(tool, agent_config, known))
 
     mcp_servers = manifest.get("mcp_servers")
     if isinstance(mcp_servers, list):
@@ -493,9 +366,6 @@ def validate_manifest(manifest: dict, state: dict | None = None) -> list[str]:
         if isinstance(names, list) and any(not isinstance(name, str) or not name for name in names):
             errors.append("skills.names must not contain empty names.")
 
-    if "tracing_table" in manifest and not manifest.get("tracing_table"):
-        errors.append("tracing_table must not be empty.")
-
     if isinstance(budget_policy, dict):
         errors.extend(_validate_budget_policy(budget_policy, enabled_agents))
 
@@ -505,8 +375,7 @@ def validate_manifest(manifest: dict, state: dict | None = None) -> list[str]:
 def _agent_model_ids(agent_config: dict) -> set[str]:
     """Every model id an agent is configured with — its list plus its default.
 
-    Claude's ``models`` is a family-slot dict and the others' a flat list; codex has no list at all,
-    only ``default_model``. Returns an empty set when nothing is configured, which callers treat as
+    Models use a flat list. Returns an empty set when nothing is configured, which callers treat as
     "can't check" rather than "nothing is allowed".
     """
     model_config = agent_config.get("model_config")
@@ -514,9 +383,7 @@ def _agent_model_ids(agent_config: dict) -> set[str]:
         return set()
     ids: set[str] = set()
     raw = model_config.get("models")
-    if isinstance(raw, dict):
-        ids.update(v for v in raw.values() if isinstance(v, str) and v)
-    elif isinstance(raw, list):
+    if isinstance(raw, list):
         ids.update(m for m in raw if isinstance(m, str) and m)
     default_model = model_config.get("default_model")
     if isinstance(default_model, str) and default_model:
@@ -575,7 +442,7 @@ def _validate_budget_policy(budget_policy: dict, enabled_agents: dict[str, dict]
             # The server only checks that the tier's agent is enabled, not that it has the model —
             # so without this a tier can activate and hand the developer a model their agent was
             # never configured with. Skipped when the agent lists no models (it then has only a
-            # default, or routes through a provider service whose catalog isn't enumerable).
+            # default).
             available = _agent_model_ids(enabled_agents[tier_agent])
             if available and tier_model not in available:
                 errors.append(

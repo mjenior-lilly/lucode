@@ -12,25 +12,20 @@ from ucode.state import (
     STATE_VERSION,
     build_agent_state,
     clear_state,
-    get_provider_service,
     hydrate_state,
     load_full_state,
     load_state,
     mark_tool_managed,
     save_state,
-    set_provider_service,
 )
 
 FAKE_WS = "https://example.databricks.com"
 FAKE_URLS = {
-    "codex": f"{FAKE_WS}/ai-gateway/codex/v1",
-    "claude": f"{FAKE_WS}/ai-gateway/anthropic",
-    "gemini": f"{FAKE_WS}/ai-gateway/gemini",
     "opencode": {
         "anthropic": f"{FAKE_WS}/ai-gateway/anthropic/v1",
         "gemini": f"{FAKE_WS}/ai-gateway/gemini/v1beta",
+        "oss": f"{FAKE_WS}/ai-gateway/mlflow/v1",
     },
-    "copilot": f"{FAKE_WS}/ai-gateway/mlflow/v1",
     "pi": {
         "claude": f"{FAKE_WS}/ai-gateway/anthropic",
         "openai": f"{FAKE_WS}/ai-gateway/codex/v1",
@@ -109,10 +104,11 @@ class TestSaveLoadRoundTrip:
         assert loaded["workspace"] == FAKE_WS
         assert loaded["claude_models"]["sonnet"] == "databricks-claude-sonnet-4"
 
-    def test_persists_codex_launcher_default_in_agent_state(self):
+    def test_persists_pi_default_in_agent_state(self):
         save_state(
             {
                 "workspace": FAKE_WS,
+                "claude_models": {"opus": "system.ai.claude-opus-4-8"},
                 "codex_models": [
                     "system.ai.gpt-5",
                     "system.ai.gpt-5-1",
@@ -123,8 +119,10 @@ class TestSaveLoadRoundTrip:
 
         persisted = load_full_state()["workspaces"][FAKE_WS]
         assert persisted["codex_models"][0] == "system.ai.gpt-5"
-        assert persisted["agents"]["codex"]["model"] == "system.ai.gpt-5-6-luna"
-        assert persisted["agents"]["pi"]["model"] == "system.ai.gpt-5"
+        # Only Pi has a derived agent entry; Claude/Codex harnesses were removed.
+        assert "codex" not in persisted["agents"]
+        assert "claude" not in persisted["agents"]
+        assert persisted["agents"]["pi"]["model"] == "system.ai.claude-opus-4-8"
 
     def test_save_respects_dry_run(self):
         import ucode.config_io as config_io_mod
@@ -156,32 +154,6 @@ class TestClearState:
 
     def test_clear_when_no_state_is_noop(self):
         clear_state()  # should not raise
-
-
-class TestProviderService:
-    def test_get_returns_none_when_unset(self):
-        assert get_provider_service({}, "claude") is None
-        assert get_provider_service({"provider_services": {}}, "claude") is None
-
-    def test_set_and_get_roundtrip(self):
-        state = set_provider_service({}, "claude", "main.a.anthropic")
-        assert state["provider_services"]["claude"] == "main.a.anthropic"
-        assert get_provider_service(state, "claude") == "main.a.anthropic"
-        assert get_provider_service(state, "codex") is None
-
-    def test_set_none_clears_entry_and_key(self):
-        state = set_provider_service({}, "claude", "main.a.anthropic")
-        state = set_provider_service(state, "claude", None)
-        assert get_provider_service(state, "claude") is None
-        # Drop the empty container entirely rather than leaving {}.
-        assert "provider_services" not in state
-
-    def test_clearing_one_tool_keeps_the_other(self):
-        state = set_provider_service({}, "claude", "main.a.anthropic")
-        state = set_provider_service(state, "codex", "main.a.openai")
-        state = set_provider_service(state, "claude", None)
-        assert get_provider_service(state, "claude") is None
-        assert get_provider_service(state, "codex") == "main.a.openai"
 
 
 # ---------------------------------------------------------------------------
@@ -216,35 +188,35 @@ class TestHydrateState:
             }
         )
 
-        assert result["agents"]["claude"]["model"] == "claude-opus"
-        assert result["agents"]["claude"]["base_url"] == FAKE_URLS["claude"]
-        # Cross-platform helper, not the old POSIX `if [ -n ... ]` pipeline (#116).
-        assert "auth-token" in result["agents"]["claude"]["auth_command"]
-        assert "if [ -n" not in result["agents"]["claude"]["auth_command"]
-        assert result["agents"]["codex"]["model"] == "gpt-5"
-        assert result["agents"]["codex"]["base_url"] == FAKE_URLS["codex"]
-        # Codex runs the helper as argv (command + args), never via `sh -c`.
-        codex_auth = result["agents"]["codex"]["auth"]
-        assert codex_auth["command"] != "sh"
-        assert codex_auth["args"][0] == "auth-token"
+        # Only Pi has a derived agent entry; Claude/Codex harnesses were removed.
+        assert set(result["agents"]) == {"pi"}
         assert result["agents"]["pi"]["model"] == "claude-opus"
         assert result["agents"]["pi"]["base_urls"] == FAKE_URLS["pi"]
+        # Cross-platform helper, not the old POSIX `if [ -n ... ]` pipeline (#116).
+        assert "auth-token" in result["agents"]["pi"]["auth_command"]
+        assert "if [ -n" not in result["agents"]["pi"]["auth_command"]
 
-    def test_normalizes_managed_configs_dict_entry(self):
+    def test_preserves_stale_removed_harness_managed_configs(self):
+        # Stale keys from removed harnesses are preserved (not migrated) and normalized in place.
         state = {"managed_configs": {"claude": {"keys": [["env", "X"]]}}}
         result = hydrate_state(state)
         assert result["managed_configs"]["claude"] == {"keys": [["env", "X"]]}
 
-    def test_normalizes_managed_configs_truthy_entry(self):
-        state = {"managed_configs": {"codex": True}}
+    def test_normalizes_managed_configs_dict_entry(self):
+        state = {"managed_configs": {"pi": {"keys": [["env", "X"]]}}}
         result = hydrate_state(state)
-        assert result["managed_configs"]["codex"] == {"keys": []}
+        assert result["managed_configs"]["pi"] == {"keys": [["env", "X"]]}
+
+    def test_normalizes_managed_configs_truthy_entry(self):
+        state = {"managed_configs": {"opencode": True}}
+        result = hydrate_state(state)
+        assert result["managed_configs"]["opencode"] == {"keys": []}
 
     def test_drops_falsy_managed_configs(self):
-        state = {"managed_configs": {"codex": False, "claude": None}}
+        state = {"managed_configs": {"opencode": False, "pi": None}}
         result = hydrate_state(state)
-        assert "codex" not in result["managed_configs"]
-        assert "claude" not in result["managed_configs"]
+        assert "opencode" not in result["managed_configs"]
+        assert "pi" not in result["managed_configs"]
 
 
 class TestBuildAgentState:
@@ -263,9 +235,8 @@ class TestBuildAgentState:
         )
         # --use-pat threads through to the `ucode auth-token --use-pat` helper,
         # which resolves the static PAT internally on every platform.
-        for agent in ("claude", "codex", "pi"):
-            assert "--use-pat" in result[agent]["auth_command"]
-            assert "--profile DEFAULT" in result[agent]["auth_command"]
+        assert "--use-pat" in result["pi"]["auth_command"]
+        assert "--profile DEFAULT" in result["pi"]["auth_command"]
 
 
 # ---------------------------------------------------------------------------
@@ -276,16 +247,16 @@ class TestBuildAgentState:
 class TestMarkToolManaged:
     def test_sets_managed_keys(self):
         state: dict = {}
-        result = mark_tool_managed(state, "claude", [["env", "X"], ["apiKeyHelper"]])
-        assert result["managed_configs"]["claude"] == {"keys": [["env", "X"], ["apiKeyHelper"]]}
+        result = mark_tool_managed(state, "pi", [["env", "X"], ["apiKeyHelper"]])
+        assert result["managed_configs"]["pi"] == {"keys": [["env", "X"], ["apiKeyHelper"]]}
 
     def test_sets_last_tool(self):
         state: dict = {}
-        result = mark_tool_managed(state, "codex", [])
-        assert result["last_tool"] == "codex"
+        result = mark_tool_managed(state, "opencode", [])
+        assert result["last_tool"] == "opencode"
 
     def test_preserves_existing_managed_configs(self):
-        state = {"managed_configs": {"gemini": {"keys": [["GEMINI_MODEL"]]}}}
-        result = mark_tool_managed(state, "codex", [["profile"]])
-        assert "gemini" in result["managed_configs"]
-        assert "codex" in result["managed_configs"]
+        state = {"managed_configs": {"opencode": {"keys": [["OPENCODE_MODEL"]]}}}
+        result = mark_tool_managed(state, "pi", [["profile"]])
+        assert "opencode" in result["managed_configs"]
+        assert "pi" in result["managed_configs"]

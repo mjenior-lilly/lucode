@@ -59,7 +59,7 @@ def kv_line(key: str, val: str) -> str:
     The value is markup-escaped. Rich reads bracketed text as a style tag and renders nothing for
     it, so a policy name of ``[prod] tiered routing`` displayed as ``tiered routing`` in the config
     summary — the one block an admin reads to confirm what they are about to publish workspace-wide.
-    Values here include admin-typed free text (policy name, skills locations, tracing table).
+    Values here include admin-typed free text (policy name, skills locations).
     """
     return f"[bold]{escape(key)}:[/bold] [cyan]{escape(val)}[/cyan]"
 

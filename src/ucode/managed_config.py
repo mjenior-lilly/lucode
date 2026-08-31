@@ -45,10 +45,6 @@ NO_MANAGED_CONFIG_MESSAGE = "No coding-agent config has been set up by your work
 # admin-write side (``managed_setup``) inverts these maps to serialize, so a new agent or MCP type
 # only has to be declared once.
 AGENT_ENUM_TO_TOOL: dict[str, str] = {
-    "CODING_AGENT_CLAUDE_CODE": "claude",
-    "CODING_AGENT_CODEX": "codex",
-    "CODING_AGENT_GEMINI": "gemini",
-    "CODING_AGENT_COPILOT": "copilot",
     "CODING_AGENT_PI": "pi",
     "CODING_AGENT_OPENCODE": "opencode",
 }
@@ -94,38 +90,18 @@ def _str_list(value: object) -> list[str]:
 
 
 def _normalize_model_config(model_config: object) -> dict | None:
-    """Normalize an ``AgentModelConfig`` oneof into ``{model_provider_service?, default_model?,
-    models}``.
-
-    The proto is a oneof over per-agent variants (claude/codex/opencode/pi/gemini/copilot). We
-    don't care which variant tag it is here — the enclosing agent already tells us — so we read the
-    common fields. Claude's ``models`` is a dict of family slots; the rest are a flat list. Returns
-    None when there's no usable model config.
-    """
+    """Normalize a surviving flat-list ``AgentModelConfig`` oneof."""
     mc = _as_dict(model_config)
-    if not mc:
-        return None
-    # Unwrap the oneof: take whichever single variant sub-dict is present.
     variant = next((_as_dict(v) for v in mc.values() if isinstance(v, dict)), None)
     if not variant:
         return None
     result: dict = {}
-    mps = _str(variant.get("model_provider_service"))
-    if mps:
-        result["model_provider_service"] = mps
     default_model = _str(variant.get("default_model"))
     if default_model:
         result["default_model"] = default_model
-    models = variant.get("models")
-    if isinstance(models, dict):
-        # Claude family slots (default_opus_model, default_sonnet_model, ...).
-        slots = {k: _str(v) for k, v in _as_dict(models).items() if _str(v)}
-        if slots:
-            result["models"] = slots
-    else:
-        model_list = _str_list(models)
-        if model_list:
-            result["models"] = model_list
+    models = _str_list(variant.get("models"))
+    if models:
+        result["models"] = models
     return result or None
 
 
@@ -151,18 +127,10 @@ def _normalize_enabled_agent(entry: object) -> tuple[str, dict] | None:
         }
         if clean:
             agent_config["custom_headers"] = clean
-    tracing_table = _tracing_table(config_in.get("tracing_config"))
-    if tracing_table:
-        agent_config["tracing_table"] = tracing_table
     model_config = _normalize_model_config(config_in.get("model_config"))
     if model_config is not None:
         agent_config["model_config"] = model_config
     return tool, agent_config
-
-
-def _tracing_table(tracing: object) -> str | None:
-    """Extract ``TracingConfig.table`` (a UC table FQN), or None."""
-    return _str(_as_dict(tracing).get("table"))
 
 
 def _normalize_mcp_servers(value: object) -> list[dict]:
@@ -238,9 +206,6 @@ def normalize_managed_config(raw: dict) -> dict:
     skill_names = _str_list(_as_dict(raw.get("skills")).get("names"))
     if skill_names:
         result["skills"] = {"names": skill_names}
-    tracing_table = _tracing_table(raw.get("tracing"))
-    if tracing_table:
-        result["tracing_table"] = tracing_table
     budget_policy = _normalize_budget_policy(raw.get("budget_policy"))
     if budget_policy is not None:
         result["budget_policy"] = budget_policy

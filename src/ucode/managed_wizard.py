@@ -1,14 +1,14 @@
 """Interactive `ucode setup`: author the workspace's managed coding-agent config.
 
 Workspace admins run this to build the ``CodingAgentConfig`` their developers will pull. It walks
-the admin through agents, per-agent models, tracing, MCP servers, skills, and a spend-routing budget
-policy, then writes the manifest to ``~/.ucode/managed-settings.json``. Publishing it to the
-workspace is ``ucode apply`` (a separate command, so an admin can review the file first).
+the admin through agents, per-agent models, MCP servers, skills, and a spend-routing budget policy,
+then writes the manifest to ``~/.ucode/managed-settings.json``. Publishing it to the workspace is
+``ucode apply`` (a separate command, so an admin can review the file first).
 
 Serialization, validation, and the per-agent model catalogs live in :mod:`ucode.managed_setup`; this
-module is the interaction layer on top of them. Sub-flows an admin already knows — tracing, MCP,
-skills — are delegated to the existing ``ucode configure <thing>`` commands and their results read
-back out of ``state.json``, so there is exactly one picker per concern in the codebase.
+module is the interaction layer on top of them. Sub-flows an admin already knows — MCP, skills — are
+delegated to the existing ``ucode configure <thing>`` commands and their results read back out of
+``state.json``, so there is exactly one picker per concern in the codebase.
 """
 
 from __future__ import annotations
@@ -20,29 +20,20 @@ from typing import cast
 from ucode.agents import TOOL_SPECS, check_gateway_endpoint
 from ucode.config_io import is_dry_run
 from ucode.databricks import (
-    ANTHROPIC_FAMILIES,
     create_coding_agent_config,
     delete_coding_agent_config,
-    discover_claude_models_unbucketed,
     ensure_databricks_auth,
     get_databricks_token,
-    has_cached_model_provider_services,
-    is_model_provider_feature_unavailable,
     is_workspace_admin,
-    list_model_provider_services,
     list_workspace_budgets,
-    service_usable_for_tool,
     update_coding_agent_config,
 )
 from ucode.managed_config import get_managed_config
 from ucode.managed_setup import (
-    CLAUDE_SLOT_FOR_FAMILY,
-    claude_family_candidates,
     load_managed_settings,
     model_options_for_agent,
     save_managed_settings,
     serialize_managed_config,
-    supports_provider_service,
     validate_manifest,
 )
 from ucode.state import load_state
@@ -75,23 +66,10 @@ GLOBAL_SETTINGS_BLURB = (
 
 BUDGET_POLICY_BLURB = (
     "A budget policy moves developers onto cheaper agents and models as the workspace spends "
-    "against a budget — for example Claude Code on Opus by default, then Sonnet at 80%, then "
-    "OpenCode on Kimi at 100%. It only changes the default; developers can still pick anything "
+    "against a budget — for example Pi on Opus by default, then OpenCode on Kimi at 80%. "
+    "It only changes the default; developers can still pick anything "
     "they have access to. Hard caps stay with the budget's own blocking threshold."
 )
-
-
-def _tracing_table_from_state(state: dict) -> str | None:
-    """The UC table `ucode configure tracing` wired up, or None when tracing is off.
-
-    ``configure tracing`` records the destination as ``uc_destination``; the managed config calls the
-    same thing ``tracing.table``.
-    """
-    tracing = state.get("tracing")
-    if not isinstance(tracing, dict) or not tracing.get("enabled"):
-        return None
-    destination = tracing.get("uc_destination")
-    return destination if isinstance(destination, str) and destination else None
 
 
 def _mcp_type_for_url(url: str) -> str | None:
@@ -151,99 +129,11 @@ def _skill_names_from_state(state: dict) -> list[str]:
     return [name for name in _skill_mcp_locations(state) if isinstance(name, str) and name]
 
 
-def provider_service_model_options(service: dict) -> list[str]:
-    """Model ids an admin can pick from a provider service, or [] when they can't be enumerated.
-
-    A service's ``config.targets`` names the provider-side models it exposes, which is exactly the
-    vocabulary the manifest's ``default_model`` must use when ``model_provider_service`` is set. Two
-    cases yield nothing to pick from, and the caller falls back to free-text:
-
-    - ``allow_all_targets`` — the service passes through the provider's whole catalog, which ucode
-      cannot enumerate (there is no list-models call for a provider service).
-    - no targets at all — e.g. a relayed Anthropic subscription service, which routes by canonical
-      model name rather than by an explicit target list.
-    """
-    if service.get("allow_all_targets"):
-        return []
-    targets = service.get("targets")
-    if not isinstance(targets, list):
-        return []
-    return sorted({t for t in targets if isinstance(t, str) and t})
-
-
-def _select_provider_service(tool: str, workspace: str, token: str) -> dict | None:
-    """Offer Databricks-hosted vs an external Model Provider Service for ``tool``.
-
-    Returns the chosen service dict (as :func:`list_model_provider_services` shapes it), or None to
-    stay on Databricks-hosted models. The whole dict is returned rather than just the name so the
-    model prompt can offer the service's ``targets`` instead of asking the admin to type a model id
-    from memory.
-
-    Only claude and codex can route through a provider service today; every other agent short-cuts to
-    Databricks. Mirrors `cli._maybe_select_provider_service`, but returns the choice instead of
-    persisting it — the wizard is authoring a manifest, not configuring this machine.
-    """
-    if not any(
-        supports_provider_service(tool, provider_type)
-        for provider_type in ("anthropic", "amazon_bedrock", "openai")
-    ):
-        return None
-
-    display = TOOL_SPECS[tool]["display"]
-    # The listing is memoized per workspace, so only the first agent's call does any I/O. That one
-    # takes over a second and deserves a spinner; the rest are instant, and spinning once per agent
-    # made the wizard look like it re-listed the services every time.
-    if has_cached_model_provider_services(workspace):
-        services, reason = list_model_provider_services(workspace, token)
-    else:
-        with spinner("Checking for model provider services..."):
-            services, reason = list_model_provider_services(workspace, token)
-    if reason is not None:
-        # A workspace without the feature enabled is the common case and not worth a warning; any
-        # other failure is worth surfacing, or the admin silently loses the MPS option and has no
-        # idea why. Mirrors `cli._maybe_select_provider_service`.
-        if not is_model_provider_feature_unavailable(reason):
-            print_warning(f"Could not list model provider services: {reason}")
-            print_note("Falling back to Databricks-hosted models.")
-        return None
-
-    usable = [service for service in services if service_usable_for_tool(tool, service)]
-    if not usable:
-        if services:
-            # Services exist but none match this agent's dialect — say so, since "no picker appeared"
-            # is otherwise indistinguishable from the feature being off.
-            print_note(
-                f"No model provider service matches {display}'s API dialect "
-                f"({len(services)} found on this workspace); using Databricks-hosted models."
-            )
-        return None
-
-    choice = prompt_for_selection(
-        f"How should {display} get its models?",
-        [
-            ("databricks", "Databricks Hosted"),
-            ("mps", "External Models (Model Provider Service)"),
-        ],
-    )
-    if choice != "mps":
-        return None
-    selected = prompt_for_selection(
-        f"Select the model provider service for {display}:",
-        [(service["name"], service["name"]) for service in usable],
-        searchable=True,
-    )
-    if not selected:
-        return None
-    return next(service for service in usable if service["name"] == selected)
-
-
-def _prompt_models_for_agent(tool: str, state: dict, provider_service: dict | None) -> dict:
+def _prompt_models_for_agent(tool: str, state: dict) -> dict:
     """Build one agent's ``model_config``. Every agent ends up with a ``default_model``.
 
-    Databricks-hosted agents pick from the workspace's discovered models, filtered to the families
-    that agent can actually serve. Provider-service agents pick from the service's own ``targets``,
-    falling back to free-text only when those can't be enumerated (``allow_all_targets``, or a
-    relayed service that routes by canonical name).
+    Both surviving agents (Pi and OpenCode) pick from the workspace's discovered models, filtered to
+    the families that agent can actually serve, and keep a flat list plus their chosen default.
 
     An empty selection is re-prompted rather than accepted: an agent with no ``default_model`` cannot
     be the config's ``default_agent`` (the server rejects it) and gives developers nothing to launch,
@@ -252,51 +142,16 @@ def _prompt_models_for_agent(tool: str, state: dict, provider_service: dict | No
     Model ids are stored bare (e.g. ``system.ai.claude-opus-4-8``), not provider-prefixed: each
     agent's own writer adds whatever prefix its config format needs (see
     ``opencode._resolve_model_selector``), which keeps the manifest agent-neutral.
-
-    Codex takes a single model (the harness selects one); Claude's picks are bucketed into
-    ``ClaudeDefaultModels`` family slots; the rest keep a flat list plus their chosen default.
     """
     display = TOOL_SPECS[tool]["display"]
     model_config: dict = {}
-    if provider_service:
-        service_name = provider_service["name"]
-        model_config["model_provider_service"] = service_name
-        targets = provider_service_model_options(provider_service)
-        if targets:
-            model_config["default_model"] = _require_selection(
-                f"Default model for {display} (from {service_name}):",
-                [(target, target) for target in targets],
-            )
-        else:
-            # No enumerable target list: the service either passes through the provider's whole
-            # catalog or routes by canonical model name, so the admin has to name the model.
-            print_note(
-                f"{service_name} does not publish an explicit model list, so enter the model id "
-                "as the provider names it (e.g. claude-sonnet-4-6)."
-            )
-            model_config["default_model"] = _require_text(f"Default model for {display}")
-        return model_config
-
-    if tool == "claude":
-        return _prompt_claude_models(state)
-
     options = model_options_for_agent(tool, state)
     if not options:
         print_warning(f"No models were discovered for {display} on this workspace.")
         return {"default_model": _require_text(f"Default model for {display}")}
 
-    if tool in SINGLE_MODEL_AGENTS:
-        return {
-            "default_model": _require_selection(
-                f"Select the model for {display}:", [(model, model) for model in options]
-            )
-        }
-
     # Nothing pre-checked: the first option is whatever discovery sorted first, not a
-    # recommendation — for pi it is a Claude model, for codex the oldest GPT. Pre-checking it made
-    # "hit Enter" produce an arbitrary config. (A worthwhile follow-up is to pre-check the models
-    # this workspace was configured with last time, which `load_managed_settings` already loads for
-    # the agent picker, so a re-run becomes an edit rather than a re-entry.)
+    # recommendation. Pre-checking it made "hit Enter" produce an arbitrary config.
     picked = _require_multi_selection(
         f"Select models for {display}:",
         [(model, model) for model in options],
@@ -312,123 +167,7 @@ def _prompt_models_for_agent(tool: str, state: dict, provider_service: dict | No
     return model_config
 
 
-# Agents that get a single model rather than a multi-select. Codex's proto has no model list at all.
-# Gemini and Copilot do declare `repeated string models`, but their config writers take one model
-# (`gemini.write_tool_config(state, model)` / `copilot.write_tool_config(state, model)`) and write a
-# single env var — so a published list would be read by nothing. Offering one keeps the manifest
-# honest about what ucode can apply; widen this when those writers grow a picker.
-SINGLE_MODEL_AGENTS = frozenset({"codex", "gemini", "copilot"})
-
-# Skip sentinel for a Claude family prompt. Every `ClaudeDefaultModels` slot is optional, and an
-# unset one falls back to `default_model`, so leaving a family out is a legitimate choice.
-_SKIP_FAMILY = "__skip__"
-
-
-def _prompt_claude_models(state: dict) -> dict:
-    """Build Claude's ``model_config`` one family slot at a time.
-
-    Claude Code addresses models by family alias, not from a list, so the config is a set of slots:
-    `default_opus_model`, `default_sonnet_model`, `default_haiku_model`, `default_fable_model`. A flat
-    multi-select can't express that — and because `state["claude_models"]` holds only the newest id
-    per family, it could only ever offer one model per family anyway. Asking per family surfaces the
-    alternatives (six opus versions on a typical workspace, not one) and matches the proto.
-
-    Each family may be skipped; the overall `default_model` is then chosen from the slots that were
-    filled, so it can never name a model the config doesn't carry.
-    """
-    display = TOOL_SPECS["claude"]["display"]
-    # No spinner: the model-services listing is already cached by the time the flow reaches here
-    # (`configure_shared_state` walked it up front), so this is a filter over data in hand, not a
-    # fetch. Showing "Fetching Claude models..." made the wizard look like it listed the catalog
-    # twice.
-    candidates = _claude_candidates(state)
-    if not candidates:
-        print_warning(f"No Claude models were discovered for {display} on this workspace.")
-        return {"default_model": _require_text(f"Default model for {display}")}
-
-    print_note(
-        "Claude Code picks a model by family, so set a default per family. Skip any family you "
-        "don't want configured — it falls back to the overall default."
-    )
-    slots: dict[str, str] = {}
-    for family in ANTHROPIC_FAMILIES:
-        family_models = candidates.get(family)
-        if not family_models:
-            continue
-        choice = prompt_for_selection(
-            f"Default {family} model:",
-            [(model, model) for model in family_models] + [(_SKIP_FAMILY, f"(skip {family})")],
-            searchable=True,
-        )
-        if choice is None:
-            raise KeyboardInterrupt
-        if choice != _SKIP_FAMILY:
-            slots[CLAUDE_SLOT_FOR_FAMILY[family]] = choice
-
-    if not slots:
-        # Every slot skipped is a legitimate, minimal config: the proto leaves `models` optional and
-        # each unset slot falls back to `default_model`, so one model covers every family. Pick it
-        # from the same candidates rather than asking the admin to type an id.
-        print_note(f"No families configured, so {display} will use a single model for all of them.")
-        every_model = [m for family_models in candidates.values() for m in family_models]
-        return {
-            "default_model": _require_selection(
-                f"Which model should {display} use?",
-                [(m, m) for m in dict.fromkeys(every_model)],
-            )
-        }
-
-    chosen = list(dict.fromkeys(slots.values()))
-    model_config: dict = {"models": slots}
-    if len(chosen) == 1:
-        # A one-option prompt is a wasted keystroke, but skipping it silently reads as a dropped
-        # step — say what was inferred so the admin knows the default is set, and to what.
-        model_config["default_model"] = chosen[0]
-        print_success(f"Overall default for {display}: {chosen[0]} (the only model configured)")
-    else:
-        model_config["default_model"] = _require_selection(
-            f"Which of those is {display}'s overall default?", [(m, m) for m in chosen]
-        )
-    return model_config
-
-
-def _claude_candidates(state: dict) -> dict[str, list[str]]:
-    """Claude models grouped by family. Degrades to the per-family picks if the listing fails.
-
-    Caches the full listing on ``state["all_claude_models"]`` so `validate_manifest` recognizes the
-    older versions these prompts offer — ``claude_models`` alone holds just the newest per family,
-    and would reject a legitimately-picked ``claude-opus-4-8``.
-
-    INVARIANT: whatever this returns must be recognizable by ``validate_manifest``, which reads
-    ``all_claude_models`` (falling back to ``claude_models``) via ``_known_models``. The two paths
-    below both satisfy it, for different reasons: the listing path widens the candidates *and* sets
-    the cache, while the fallback path sets nothing but also narrows the candidates to
-    ``claude_models``, which ``_known_models`` already covers. Widening the fallback without also
-    populating the cache breaks the invariant, and the symptom is a confusing rejection at the very
-    end of the flow ("claude: model 'system.ai.claude-opus-4-8' is not available on this
-    workspace") rather than an error at the prompt that offered it.
-    """
-    cached = state.get("all_claude_models")
-    if isinstance(cached, list) and cached:
-        return claude_family_candidates([m for m in cached if isinstance(m, str)], state)
-
-    workspace = state.get("workspace")
-    all_claude: list[str] = []
-    if workspace:
-        try:
-            token = get_databricks_token(workspace, state.get("profile"))
-            all_claude, _ = discover_claude_models_unbucketed(workspace, token)
-        except (RuntimeError, OSError):
-            # OSError covers a missing `databricks` binary: `get_databricks_token` shells out, so a
-            # machine without the CLI on PATH raises FileNotFoundError rather than RuntimeError.
-            # Either way the per-family picks below are a usable fallback.
-            all_claude = []
-    if all_claude:
-        state["all_claude_models"] = all_claude
-    return claude_family_candidates(all_claude, state)
-
-
-# Every picker in this flow chooses a model, a provider service, or a budget — lists that on a real
+# Every picker in this flow chooses a model or a budget — lists that on a real
 # workspace run to a dozen-plus entries (16 GPT models on the workspace this was built against), so
 # they are all filterable by typing. That trades away j/k navigation, which questionary can't offer
 # alongside search; arrow keys still work.
@@ -480,18 +219,15 @@ def _require_text(prompt: str) -> str:
 def configured_models_for_agent(agent_config: dict) -> list[str]:
     """Models an agent was configured with, in the manifest's own vocabulary.
 
-    ``model_config.models`` is a flat list for most agents but a family-slot dict for claude
-    (``default_opus_model`` -> id), so both shapes collapse to a list here. The ``default_model`` is
-    included because codex has no model list at all — it is the only model that agent has.
+    Both surviving agents use a flat ``model_config.models`` list. The ``default_model`` is included
+    because an agent may carry only a default with no explicit list.
     """
     model_config = agent_config.get("model_config")
     if not isinstance(model_config, dict):
         return []
     models: list[str] = []
     raw = model_config.get("models")
-    if isinstance(raw, dict):
-        models.extend(v for v in raw.values() if isinstance(v, str) and v)
-    elif isinstance(raw, list):
+    if isinstance(raw, list):
         models.extend(m for m in raw if isinstance(m, str) and m)
     default_model = model_config.get("default_model")
     if isinstance(default_model, str) and default_model:
@@ -610,19 +346,11 @@ def _render_summary(workspace: str, manifest: dict) -> None:
         display = TOOL_SPECS.get(tool, {}).get("display", tool)
         model_config = agent_config.get("model_config") or {}
         detail = model_config.get("default_model") or "no model"
-        provider = model_config.get("model_provider_service")
-        if provider:
-            detail = f"{detail} via {provider}"
         scope = "machine-wide" if agent_config.get("use_as_global_settings") else "per-user"
         lines.append(kv_line(display, f"{detail} ({scope})"))
-        # Spell out the per-family slots and model lists: the one-line default alone doesn't show
-        # which families an admin configured, which is most of what they chose for claude.
+        # Spell out the model list beyond the one-line default when an admin picked more than one.
         models = model_config.get("models")
-        if isinstance(models, dict):
-            for slot, model in models.items():
-                family = slot.removeprefix("default_").removesuffix("_model")
-                lines.append(kv_line(f"  {family}", str(model)))
-        elif isinstance(models, list) and len(models) > 1:
+        if isinstance(models, list) and len(models) > 1:
             lines.append(kv_line("  models", ", ".join(str(m) for m in models)))
 
     mcp_servers = manifest.get("mcp_servers") or []
@@ -634,7 +362,6 @@ def _render_summary(workspace: str, manifest: dict) -> None:
     )
     skills = (manifest.get("skills") or {}).get("names") or []
     lines.append(kv_line("Skills", ", ".join(skills) if skills else "none"))
-    lines.append(kv_line("Tracing", manifest.get("tracing_table") or "disabled"))
 
     policy = manifest.get("budget_policy")
     if isinstance(policy, dict):
@@ -696,7 +423,7 @@ def _handle_existing_config(workspace: str, token: str) -> bool:
 
     print_warning(
         "This workspace already has a managed configuration — one config covers every agent, MCP "
-        "server, skill, tracing table, and budget policy for the whole workspace."
+        "server, skill, and budget policy for the whole workspace."
     )
     choice = prompt_for_selection(
         "What would you like to do?",
@@ -862,12 +589,9 @@ def setup_command(from_file: str | None = None) -> int:
     enabled_agents: dict[str, dict] = {}
     for tool in picked:
         print_heading(TOOL_SPECS[tool]["display"])
-        provider_service = _select_provider_service(tool, workspace, token)
         # Always set: `_prompt_models_for_agent` re-prompts rather than returning empty, so every
         # enabled agent carries a default_model and any of them can be the default_agent.
-        agent_config: dict = {
-            "model_config": _prompt_models_for_agent(tool, state, provider_service)
-        }
+        agent_config: dict = {"model_config": _prompt_models_for_agent(tool, state)}
         agent_config["use_as_global_settings"] = prompt_yes_no_default(
             f"Apply {TOOL_SPECS[tool]['display']} config machine-wide? ({GLOBAL_SETTINGS_BLURB})",
             default=False,
@@ -875,21 +599,6 @@ def setup_command(from_file: str | None = None) -> int:
         enabled_agents[tool] = agent_config
 
     manifest: dict = {"default_agent": default_agent, "enabled_agents": enabled_agents}
-
-    print_section("Tracing")
-    if prompt_yes_no_default(
-        "Send coding-session traces to an MLflow experiment in this workspace?",
-        default=bool(_tracing_table_from_state(state)),
-    ):
-        from ucode.tracing import configure_tracing_command
-
-        configure_tracing_command(workspaces=[(workspace, profile)])
-        tracing_table = _tracing_table_from_state(load_state())
-        if tracing_table:
-            manifest["tracing_table"] = tracing_table
-            print_success(f"Tracing configured ({tracing_table})")
-        else:
-            print_warning("Tracing was not enabled, so it is left out of the managed config.")
 
     print_section("MCP servers")
     if prompt_yes_no_default("Set up managed MCP servers for this workspace?", default=False):
@@ -979,40 +688,6 @@ def _explain_publish_failure(reason: str) -> str:
     return f"Could not publish the managed config: {reason}"
 
 
-def _with_claude_inventory(state: dict, workspace: str, profile: str | None) -> dict:
-    """``state`` plus the full Claude listing, for validating a manifest against the workspace.
-
-    ``state["claude_models"]`` holds only the newest id per family (the launch path pins one model
-    per family alias), but `ucode setup` deliberately offers the older versions too — pinning
-    ``default_opus_model`` to a known-good ``claude-opus-4-8`` is a normal thing for an admin to
-    want. Validating against ``claude_models`` alone therefore rejected a model the wizard itself
-    had just offered:
-
-        claude: model 'system.ai.claude-opus-4-8' is not available on this workspace.
-
-    The wizard stashes the full listing on ``state["all_claude_models"]`` mid-run, but that is never
-    persisted — `setup` saves the manifest, not the state — so a separate `ucode apply` process
-    starts from a fresh ``load_state()`` without it. Re-fetching here makes the check independent of
-    what the wizard happened to leave behind, which also covers a hand-edited or ``--from-file``
-    manifest authored on another machine.
-
-    Best-effort: a failed listing returns ``state`` untouched, leaving validation on the narrower
-    inventory rather than blocking a publish on a transient API error.
-    """
-    if isinstance(state.get("all_claude_models"), list) and state["all_claude_models"]:
-        return state
-    try:
-        token = get_databricks_token(workspace, profile)
-        all_claude, _ = discover_claude_models_unbucketed(workspace, token)
-    except (RuntimeError, OSError):
-        # OSError covers a missing `databricks` binary: `get_databricks_token` shells out, so a
-        # machine without the CLI on PATH raises FileNotFoundError rather than RuntimeError.
-        return state
-    if not all_claude:
-        return state
-    return {**state, "all_claude_models": all_claude}
-
-
 def apply_command(*, yes: bool = False) -> int:
     """Publish the authored manifest to the workspace.
 
@@ -1037,11 +712,10 @@ def apply_command(*, yes: bool = False) -> int:
             "(or `ucode setup --from-file <json>`)."
         )
 
-    # Auth first: validating a Claude manifest needs the workspace's full model listing, and that
-    # listing needs a token. Nothing is written until well below this point.
+    # Auth first: publishing needs a token, and nothing is written until well below this point.
     ensure_databricks_auth(workspace, profile)
 
-    errors = validate_manifest(manifest, _with_claude_inventory(state, workspace, profile))
+    errors = validate_manifest(manifest, state)
     if errors:
         print_err("The authored config is not valid, so it was not published:")
         for error in errors:

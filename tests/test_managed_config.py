@@ -21,22 +21,17 @@ from ucode.managed_config import (
 RAW_MANIFEST = {
     "name": "coding-agent-configs/abc-123",
     "workspace_id": 1653573648247579,
-    "default_agent": "CODING_AGENT_CLAUDE_CODE",
+    "default_agent": "CODING_AGENT_PI",
     "enabled_agents": [
         {
-            "agent": "CODING_AGENT_CLAUDE_CODE",
+            "agent": "CODING_AGENT_PI",
             "config": {
                 "use_as_global_settings": True,
                 "custom_headers": {"x-databricks-workspace": "eng-ml-inference"},
-                "tracing_config": {"table": "main.default.ucode_traces"},
                 "model_config": {
-                    "claude": {
+                    "pi": {
                         "default_model": "system.ai.claude-opus-4-8",
-                        "models": {
-                            "default_opus_model": "system.ai.claude-opus-4-8",
-                            "default_sonnet_model": "system.ai.claude-sonnet-4-6",
-                            "default_haiku_model": "system.ai.claude-haiku-4-5",
-                        },
+                        "models": ["system.ai.claude-opus-4-8", "system.ai.gpt-5-6"],
                     }
                 },
             },
@@ -65,7 +60,7 @@ RAW_MANIFEST = {
         "tiers": [
             {
                 "spending_percentage": 0.8,
-                "default_agent": "CODING_AGENT_CLAUDE_CODE",
+                "default_agent": "CODING_AGENT_PI",
                 "default_model": "system.ai.claude-sonnet-4-6",
             },
             {
@@ -82,16 +77,15 @@ class TestNormalize:
     def test_full_manifest_maps_enums_to_tool_names(self):
         cfg = normalize_managed_config(RAW_MANIFEST)
         assert cfg["name"] == "coding-agent-configs/abc-123"
-        assert cfg["default_agent"] == "claude"
-        assert set(cfg["enabled_agents"]) == {"claude", "opencode"}
+        assert cfg["default_agent"] == "pi"
+        assert set(cfg["enabled_agents"]) == {"pi", "opencode"}
 
-    def test_claude_agent_config_fields(self):
-        claude = normalize_managed_config(RAW_MANIFEST)["enabled_agents"]["claude"]
-        assert claude["use_as_global_settings"] is True
-        assert claude["custom_headers"] == {"x-databricks-workspace": "eng-ml-inference"}
-        assert claude["tracing_table"] == "main.default.ucode_traces"
-        assert claude["model_config"]["default_model"] == "system.ai.claude-opus-4-8"
-        assert claude["model_config"]["models"]["default_opus_model"] == "system.ai.claude-opus-4-8"
+    def test_pi_agent_config_fields(self):
+        pi = normalize_managed_config(RAW_MANIFEST)["enabled_agents"]["pi"]
+        assert pi["use_as_global_settings"] is True
+        assert pi["custom_headers"] == {"x-databricks-workspace": "eng-ml-inference"}
+        assert pi["model_config"]["default_model"] == "system.ai.claude-opus-4-8"
+        assert pi["model_config"]["models"] == ["system.ai.claude-opus-4-8", "system.ai.gpt-5-6"]
 
     def test_opencode_model_list_is_flat(self):
         opencode = normalize_managed_config(RAW_MANIFEST)["enabled_agents"]["opencode"]
@@ -107,10 +101,10 @@ class TestNormalize:
             {"name": "some-space-id", "type": "genie-space"},
         ]
 
-    def test_skills_and_tracing_and_budget(self):
+    def test_skills_and_budget(self):
         cfg = normalize_managed_config(RAW_MANIFEST)
         assert cfg["skills"] == {"names": ["system.ai.pdf-extraction"]}
-        assert cfg["tracing_table"] == "main.default.ucode_traces"
+        assert "tracing" not in cfg
         assert cfg["budget_policy"]["budget_id"] == "c6563b45-df9a-4b19-afb2-d42dc2b52576"
         assert cfg["budget_policy"]["tiers"][1]["default_agent"] == "opencode"
 
@@ -134,7 +128,7 @@ class TestGetManagedConfig:
         )
         cfg, reason = get_managed_config("https://ws", "tok")
         assert reason is None
-        assert cfg["default_agent"] == "claude"
+        assert cfg["default_agent"] == "pi"
 
     def test_no_config_is_not_an_error(self, monkeypatch):
         monkeypatch.setattr(
@@ -189,13 +183,13 @@ class TestPersistence:
         assert loaded == cfg
 
     def test_saved_file_is_0600(self, _managed_path):
-        save_managed_state("https://ws.example.com", {"default_agent": "claude"})
+        save_managed_state("https://ws.example.com", {"default_agent": "pi"})
         mode = stat.S_IMODE(os.stat(_managed_path).st_mode)
         # Owner-only read/write; no group/other bits.
         assert mode == 0o600
 
     def test_load_ignores_other_workspace(self, _managed_path):
-        save_managed_state("https://ws-a.example.com", {"default_agent": "claude"})
+        save_managed_state("https://ws-a.example.com", {"default_agent": "pi"})
         assert load_managed_state("https://ws-b.example.com") is None
 
     def test_load_missing_returns_none(self, _managed_path):
@@ -207,7 +201,7 @@ class TestPersistence:
     def test_empty_config_overwrites_a_previous_one(self, _managed_path):
         # Saving an empty config is how "the admin removed it" is recorded: the stored config must
         # be replaced, not left behind for the read-failure fallback to reapply.
-        save_managed_state("https://ws.example.com", {"default_agent": "claude"})
+        save_managed_state("https://ws.example.com", {"default_agent": "pi"})
         save_managed_state("https://ws.example.com", {})
         assert load_managed_state("https://ws.example.com") == {}
 
@@ -225,7 +219,7 @@ class TestFetchClient:
         configs, reason = db_mod.fetch_managed_coding_agent_configs("https://ws", "tok")
         assert reason is None
         assert len(configs) == 1
-        assert configs[0]["default_agent"] == "CODING_AGENT_CLAUDE_CODE"
+        assert configs[0]["default_agent"] == "CODING_AGENT_PI"
 
     def test_empty_list_when_no_configs(self, monkeypatch):
         monkeypatch.setattr(
@@ -252,12 +246,12 @@ WORKSPACE = "https://ws.example.com"
 
 # A normalized managed config, as `normalize_managed_config` produces it.
 MANAGED = {
-    "default_agent": "claude",
+    "default_agent": "pi",
     "enabled_agents": {
-        "claude": {
+        "pi": {
             "model_config": {
                 "default_model": "system.ai.claude-opus-5",
-                "models": {"default_opus_model": "system.ai.claude-opus-5"},
+                "models": ["system.ai.claude-opus-5"],
             }
         }
     },
@@ -265,7 +259,7 @@ MANAGED = {
 
 
 def _state(**overrides) -> dict:
-    state = {"workspace": WORKSPACE, "managed_configs": {"claude": {"keys": []}}}
+    state = {"workspace": WORKSPACE, "managed_configs": {"pi": {"keys": []}}}
     state.update(overrides)
     return state
 

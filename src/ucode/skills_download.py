@@ -24,8 +24,8 @@ from ucode.ui import (
     prompt_yes_no,
 )
 
-# `.claude/skills` (Claude) + `.agents/skills` (the alias other agents read).
-SKILL_BASE_DIR_NAMES = (".claude/skills", ".agents/skills")
+# `.agents/skills` (the skills root the surviving agents read).
+SKILL_BASE_DIR_NAMES = (".agents/skills",)
 
 SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9-]+$")
 
@@ -154,7 +154,7 @@ def fetch_skill_bundle(
 
 
 def skill_dir_roots(project_dir: str | None) -> list[Path]:
-    """The ``.claude/skills`` and ``.agents/skills`` roots to download into.
+    """The ``.agents/skills`` root(s) to download into.
 
     ``project_dir`` must be an existing absolute directory when given; when
     omitted, roots default to the user's home directory (user scope).
