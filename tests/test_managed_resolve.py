@@ -6,10 +6,10 @@ import json
 
 import pytest
 
-import ucode.agents.opencode as opencode
-import ucode.config_io as config_io
-import ucode.state as state_mod
-from ucode.managed_resolve import (
+import lucode.agents.opencode as opencode
+import lucode.config_io as config_io
+import lucode.state as state_mod
+from lucode.managed_resolve import (
     managed_default_model,
     managed_enabled_tools,
     managed_launch_model,
@@ -19,7 +19,7 @@ from ucode.managed_resolve import (
     recommended_agent,
     resolve_state,
 )
-from ucode.state import MANAGED_OVERLAY_KEY
+from lucode.state import MANAGED_OVERLAY_KEY
 
 WORKSPACE = "https://ws.example.com"
 

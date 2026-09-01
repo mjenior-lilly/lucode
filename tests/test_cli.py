@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pytest
 from typer.testing import CliRunner
 
-from ucode.cli import app
+from lucode.cli import app
 
 _ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
@@ -31,10 +31,10 @@ TOOLS = ["opencode", "pi"]
 def no_state_writes():
     """Prevent any test from writing to the real state file on disk."""
     with (
-        patch("ucode.state.save_state"),
-        patch("ucode.cli.save_state"),
-        patch("ucode.agents.__init__.save_state"),
-        patch("ucode.agents.opencode.save_state"),
+        patch("lucode.state.save_state"),
+        patch("lucode.cli.save_state"),
+        patch("lucode.agents.__init__.save_state"),
+        patch("lucode.agents.opencode.save_state"),
     ):
         yield
 
@@ -44,7 +44,7 @@ def no_blocking_ai_tools_prompt():
     """The interactive configure flow prompts for AI Tools; default it to yes so
     tests that drive that path don't block reading stdin. Tests that assert on the
     prompt override this with their own patch."""
-    with patch("ucode.cli.prompt_yes_no_default", lambda msg, *, default: default):
+    with patch("lucode.cli.prompt_yes_no_default", lambda msg, *, default: default):
         yield
 
 
@@ -112,11 +112,11 @@ class TestVersion:
         assert _strip_ansi(result.output).strip() != ""
 
     def test_matches_telemetry_version(self):
-        from ucode.telemetry import ucode_version
+        from lucode.telemetry import lucode_version
 
         result = runner.invoke(app, ["--version"])
         assert result.exit_code == 0
-        assert ucode_version() in _strip_ansi(result.output)
+        assert lucode_version() in _strip_ansi(result.output)
 
 
 def _patch_launch(tool: str):
@@ -127,31 +127,31 @@ def _patch_launch(tool: str):
     also stubbed to avoid the launch-time refetch hitting the network.
     """
     return [
-        patch("ucode.cli.ensure_bootstrap_dependencies"),
-        patch("ucode.cli.load_state", return_value=MINIMAL_STATE),
+        patch("lucode.cli.ensure_bootstrap_dependencies"),
+        patch("lucode.cli.load_state", return_value=MINIMAL_STATE),
         patch(
-            "ucode.cli.ensure_provider_state",
+            "lucode.cli.ensure_provider_state",
             return_value=MINIMAL_STATE,
         ),
         patch(
-            "ucode.cli.configure_shared_state",
+            "lucode.cli.configure_shared_state",
             return_value=MINIMAL_STATE,
         ),
         patch(
-            "ucode.cli.resolve_launch_model",
+            "lucode.cli.resolve_launch_model",
             return_value=(MINIMAL_STATE, "databricks-claude-sonnet-4"),
         ),
         patch(
-            "ucode.cli.configure_tool",
+            "lucode.cli.configure_tool",
             return_value=MINIMAL_STATE,
         ),
-        patch("ucode.cli._fetch_managed_config", return_value=None),
-        patch("ucode.cli.launch_agent"),
+        patch("lucode.cli._fetch_managed_config", return_value=None),
+        patch("lucode.cli.launch_agent"),
     ]
 
 
 class TestAuthTokenCommand:
-    """`ucode auth-token` is the cross-platform apiKeyHelper (#116)."""
+    """`lucode auth-token` is the cross-platform apiKeyHelper (#116)."""
 
     @pytest.fixture(autouse=True)
     def _isolated_bearer(self):
@@ -166,8 +166,8 @@ class TestAuthTokenCommand:
 
     def test_prints_only_the_token_to_stdout(self):
         with (
-            patch("ucode.cli.load_state", return_value={"workspace": "https://ws"}),
-            patch("ucode.cli.get_databricks_token", return_value="tok-123") as fetch,
+            patch("lucode.cli.load_state", return_value={"workspace": "https://ws"}),
+            patch("lucode.cli.get_databricks_token", return_value="tok-123") as fetch,
         ):
             result = runner.invoke(app, ["auth-token"])
         assert result.exit_code == 0
@@ -178,8 +178,8 @@ class TestAuthTokenCommand:
 
     def test_host_and_profile_override_state(self):
         with (
-            patch("ucode.cli.load_state", return_value={"workspace": "https://saved"}),
-            patch("ucode.cli.get_databricks_token", return_value="tok") as fetch,
+            patch("lucode.cli.load_state", return_value={"workspace": "https://saved"}),
+            patch("lucode.cli.get_databricks_token", return_value="tok") as fetch,
         ):
             result = runner.invoke(
                 app, ["auth-token", "--host", "https://override", "--profile", "prod"]
@@ -188,7 +188,7 @@ class TestAuthTokenCommand:
         fetch.assert_called_once_with("https://override", "prod")
 
     def test_errors_without_workspace(self):
-        with patch("ucode.cli.load_state", return_value={}):
+        with patch("lucode.cli.load_state", return_value={}):
             result = runner.invoke(app, ["auth-token"])
         assert result.exit_code == 1
         # The error goes to stderr, never stdout.
@@ -202,11 +202,11 @@ class TestAuthTokenCommand:
         # --use-pat reads the profile's static PAT, exports it as
         # DATABRICKS_BEARER, and get_databricks_token returns it directly.
         monkeypatch.delenv("DATABRICKS_BEARER", raising=False)
-        monkeypatch.setattr("ucode.databricks.auth.resolve_pat_token", lambda p: "dapi-pat")
+        monkeypatch.setattr("lucode.databricks.auth.resolve_pat_token", lambda p: "dapi-pat")
         with (
-            patch("ucode.cli.load_state", return_value={"workspace": "https://ws"}),
+            patch("lucode.cli.load_state", return_value={"workspace": "https://ws"}),
             patch(
-                "ucode.cli.get_databricks_token",
+                "lucode.cli.get_databricks_token",
                 side_effect=lambda w, p: os.environ.get("DATABRICKS_BEARER", ""),
             ),
         ):
@@ -218,11 +218,11 @@ class TestAuthTokenCommand:
         # A stray empty DATABRICKS_BEARER must not shadow the PAT and force the
         # OAuth path (the regression that motivated ensure_pat_bearer).
         monkeypatch.setenv("DATABRICKS_BEARER", "")
-        monkeypatch.setattr("ucode.databricks.auth.resolve_pat_token", lambda p: "dapi-pat")
+        monkeypatch.setattr("lucode.databricks.auth.resolve_pat_token", lambda p: "dapi-pat")
         with (
-            patch("ucode.cli.load_state", return_value={"workspace": "https://ws"}),
+            patch("lucode.cli.load_state", return_value={"workspace": "https://ws"}),
             patch(
-                "ucode.cli.get_databricks_token",
+                "lucode.cli.get_databricks_token",
                 side_effect=lambda w, p: os.environ.get("DATABRICKS_BEARER", ""),
             ),
         ):
@@ -234,10 +234,10 @@ class TestAuthTokenCommand:
         # --use-pat with no resolvable PAT must error, NOT fall through to OAuth
         # (which can't serve a PAT-only profile and yields a misleading message).
         monkeypatch.delenv("DATABRICKS_BEARER", raising=False)
-        monkeypatch.setattr("ucode.databricks.auth.resolve_pat_token", lambda p: None)
+        monkeypatch.setattr("lucode.databricks.auth.resolve_pat_token", lambda p: None)
         with (
-            patch("ucode.cli.load_state", return_value={"workspace": "https://ws"}),
-            patch("ucode.cli.get_databricks_token", return_value="oauth-tok") as fetch,
+            patch("lucode.cli.load_state", return_value={"workspace": "https://ws"}),
+            patch("lucode.cli.get_databricks_token", return_value="oauth-tok") as fetch,
         ):
             result = runner.invoke(app, ["auth-token", "--use-pat", "--profile", "p"])
         assert result.exit_code == 1
@@ -248,11 +248,11 @@ class TestAuthTokenCommand:
     def test_use_pat_honors_non_empty_bearer_env(self, monkeypatch):
         # A real pre-set bearer (CI escape hatch) wins over the profile PAT.
         monkeypatch.setenv("DATABRICKS_BEARER", "ci-bearer")
-        monkeypatch.setattr("ucode.databricks.auth.resolve_pat_token", lambda p: "dapi-pat")
+        monkeypatch.setattr("lucode.databricks.auth.resolve_pat_token", lambda p: "dapi-pat")
         with (
-            patch("ucode.cli.load_state", return_value={"workspace": "https://ws"}),
+            patch("lucode.cli.load_state", return_value={"workspace": "https://ws"}),
             patch(
-                "ucode.cli.get_databricks_token",
+                "lucode.cli.get_databricks_token",
                 side_effect=lambda w, p: os.environ.get("DATABRICKS_BEARER", ""),
             ),
         ):
@@ -263,19 +263,19 @@ class TestAuthTokenCommand:
 
 class TestConfigureSkillsCommand:
     def test_mcp_flag_dispatches_location_set(self):
-        with patch("ucode.cli.configure_skills_mcp_command") as mock_mcp:
+        with patch("lucode.cli.configure_skills_mcp_command") as mock_mcp:
             result = runner.invoke(app, ["configure", "skills", "--location", "a.b", "--mcp"])
         assert result.exit_code == 0, result.output
         mock_mcp.assert_called_once_with(["a.b"])
 
     def test_comma_location_yields_multiple_schemas(self):
-        with patch("ucode.cli.configure_skills_mcp_command") as mock_mcp:
+        with patch("lucode.cli.configure_skills_mcp_command") as mock_mcp:
             result = runner.invoke(app, ["configure", "skills", "--location", "a.b, c.d", "--mcp"])
         assert result.exit_code == 0, result.output
         mock_mcp.assert_called_once_with(["a.b", "c.d"])
 
     def test_default_mode_dispatches_download_with_path(self):
-        with patch("ucode.cli.configure_skills_download_command") as mock_download:
+        with patch("lucode.cli.configure_skills_download_command") as mock_download:
             result = runner.invoke(
                 app, ["configure", "skills", "--location", "a.b", "--path", "/tmp/skills"]
             )
@@ -283,13 +283,13 @@ class TestConfigureSkillsCommand:
         mock_download.assert_called_once_with(["a.b"], path="/tmp/skills", skills=None)
 
     def test_default_mode_without_path_dispatches_download(self):
-        with patch("ucode.cli.configure_skills_download_command") as mock_download:
+        with patch("lucode.cli.configure_skills_download_command") as mock_download:
             result = runner.invoke(app, ["configure", "skills", "--location", "a.b"])
         assert result.exit_code == 0, result.output
         mock_download.assert_called_once_with(["a.b"], path=None, skills=None)
 
     def test_skill_filter_dispatches_download_with_subset(self):
-        with patch("ucode.cli.configure_skills_download_command") as mock_download:
+        with patch("lucode.cli.configure_skills_download_command") as mock_download:
             result = runner.invoke(
                 app, ["configure", "skills", "--location", "a.b", "--skill", "my_skill"]
             )
@@ -297,7 +297,7 @@ class TestConfigureSkillsCommand:
         mock_download.assert_called_once_with(["a.b"], path=None, skills={"my_skill"})
 
     def test_skill_filter_parses_comma_list(self):
-        with patch("ucode.cli.configure_skills_download_command") as mock_download:
+        with patch("lucode.cli.configure_skills_download_command") as mock_download:
             result = runner.invoke(
                 app, ["configure", "skills", "--location", "a.b", "--skill", "s1, s2"]
             )
@@ -306,8 +306,8 @@ class TestConfigureSkillsCommand:
 
     def test_skill_with_mcp_exit_1(self):
         with (
-            patch("ucode.cli.configure_skills_mcp_command") as mock_mcp,
-            patch("ucode.cli.configure_skills_download_command") as mock_download,
+            patch("lucode.cli.configure_skills_mcp_command") as mock_mcp,
+            patch("lucode.cli.configure_skills_download_command") as mock_download,
         ):
             result = runner.invoke(
                 app, ["configure", "skills", "--location", "a.b", "--mcp", "--skill", "my_skill"]
@@ -319,8 +319,8 @@ class TestConfigureSkillsCommand:
 
     def test_skill_without_location_exit_1(self):
         with (
-            patch("ucode.cli.configure_skills_mcp_command") as mock_mcp,
-            patch("ucode.cli.configure_skills_download_command") as mock_download,
+            patch("lucode.cli.configure_skills_mcp_command") as mock_mcp,
+            patch("lucode.cli.configure_skills_download_command") as mock_download,
         ):
             result = runner.invoke(app, ["configure", "skills", "--skill", "my_skill"])
         assert result.exit_code == 1
@@ -329,7 +329,7 @@ class TestConfigureSkillsCommand:
         mock_download.assert_not_called()
 
     def test_skill_with_multiple_locations_exit_1(self):
-        with patch("ucode.cli.configure_skills_download_command") as mock_download:
+        with patch("lucode.cli.configure_skills_download_command") as mock_download:
             result = runner.invoke(
                 app, ["configure", "skills", "--location", "a.b, c.d", "--skill", "my_skill"]
             )
@@ -340,8 +340,8 @@ class TestConfigureSkillsCommand:
 
     def test_path_with_mcp_exit_1(self):
         with (
-            patch("ucode.cli.configure_skills_mcp_command") as mock_mcp,
-            patch("ucode.cli.configure_skills_download_command") as mock_download,
+            patch("lucode.cli.configure_skills_mcp_command") as mock_mcp,
+            patch("lucode.cli.configure_skills_download_command") as mock_download,
         ):
             result = runner.invoke(
                 app, ["configure", "skills", "--location", "a.b", "--mcp", "--path", "/tmp/skills"]
@@ -352,34 +352,34 @@ class TestConfigureSkillsCommand:
         mock_download.assert_not_called()
 
     def test_three_part_location_exit_1(self):
-        with patch("ucode.cli.configure_skills_mcp_command") as mock_mcp:
+        with patch("lucode.cli.configure_skills_mcp_command") as mock_mcp:
             result = runner.invoke(app, ["configure", "skills", "--location", "a.b.c", "--mcp"])
         assert result.exit_code == 1
         mock_mcp.assert_not_called()
 
     def test_malformed_location_exit_1_names_location(self):
-        with patch("ucode.cli.configure_skills_mcp_command") as mock_mcp:
+        with patch("lucode.cli.configure_skills_mcp_command") as mock_mcp:
             result = runner.invoke(app, ["configure", "skills", "--location", "justone", "--mcp"])
         assert result.exit_code == 1
         assert "--location" in _strip_ansi(result.output)
         mock_mcp.assert_not_called()
 
     def test_bare_command_registers_schemaless_connection(self):
-        with patch("ucode.cli.configure_skills_mcp_command") as mock_mcp:
+        with patch("lucode.cli.configure_skills_mcp_command") as mock_mcp:
             result = runner.invoke(app, ["configure", "skills"])
         assert result.exit_code == 0, result.output
         mock_mcp.assert_called_once_with([])
 
     def test_mcp_without_location_registers_schemaless_connection(self):
-        with patch("ucode.cli.configure_skills_mcp_command") as mock_mcp:
+        with patch("lucode.cli.configure_skills_mcp_command") as mock_mcp:
             result = runner.invoke(app, ["configure", "skills", "--mcp"])
         assert result.exit_code == 0, result.output
         mock_mcp.assert_called_once_with([])
 
     def test_path_without_location_exit_1(self):
         with (
-            patch("ucode.cli.configure_skills_mcp_command") as mock_mcp,
-            patch("ucode.cli.configure_skills_download_command") as mock_download,
+            patch("lucode.cli.configure_skills_mcp_command") as mock_mcp,
+            patch("lucode.cli.configure_skills_download_command") as mock_download,
         ):
             result = runner.invoke(app, ["configure", "skills", "--path", "/tmp/skills"])
         assert result.exit_code == 1
@@ -391,10 +391,10 @@ class TestConfigureSkillsCommand:
 class TestConfigureMcpFlag:
     def test_mcp_with_agents_configures_then_registers_services(self):
         with (
-            patch("ucode.cli.install_databricks_cli"),
-            patch("ucode.cli.install_tool_binary"),
-            patch("ucode.cli.configure_workspace_command") as mock_cfg,
-            patch("ucode.cli.configure_mcp_command") as mock_mcp,
+            patch("lucode.cli.install_databricks_cli"),
+            patch("lucode.cli.install_tool_binary"),
+            patch("lucode.cli.configure_workspace_command") as mock_cfg,
+            patch("lucode.cli.configure_mcp_command") as mock_mcp,
         ):
             result = runner.invoke(
                 app,
@@ -411,10 +411,10 @@ class TestConfigureMcpFlag:
         # `--mcp` with no --agents: configure the workspace directly,
         # never the interactive agent picker, then register the MCP service.
         with (
-            patch("ucode.cli.install_databricks_cli"),
-            patch("ucode.cli.configure_workspace_command") as mock_cfg,
-            patch("ucode.cli._configure_shared_workspace_states") as mock_shared,
-            patch("ucode.cli.configure_mcp_command") as mock_mcp,
+            patch("lucode.cli.install_databricks_cli"),
+            patch("lucode.cli.configure_workspace_command") as mock_cfg,
+            patch("lucode.cli._configure_shared_workspace_states") as mock_shared,
+            patch("lucode.cli.configure_mcp_command") as mock_mcp,
         ):
             result = runner.invoke(
                 app,
@@ -438,10 +438,10 @@ class TestConfigureMcpFlag:
 
     def test_mcp_rejects_bare_short_name(self):
         with (
-            patch("ucode.cli.install_databricks_cli"),
-            patch("ucode.cli.configure_workspace_command"),
-            patch("ucode.cli._configure_shared_workspace_states"),
-            patch("ucode.cli.configure_mcp_command") as mock_mcp,
+            patch("lucode.cli.install_databricks_cli"),
+            patch("lucode.cli.configure_workspace_command"),
+            patch("lucode.cli._configure_shared_workspace_states"),
+            patch("lucode.cli.configure_mcp_command") as mock_mcp,
         ):
             result = runner.invoke(
                 app, ["configure", "--workspaces", "https://ws.databricks.com", "--mcp", "slack"]
@@ -452,7 +452,7 @@ class TestConfigureMcpFlag:
 
 class TestConfigureAgentsSelection:
     def test_selected_tools_skip_picker(self, monkeypatch):
-        import ucode.cli as cli_mod
+        import lucode.cli as cli_mod
 
         state = {**MINIMAL_STATE, "available_tools": []}
         monkeypatch.setattr(
@@ -490,7 +490,7 @@ class TestConfigureAgentsSelection:
         assert configured == [["opencode", "pi"]]
 
     def test_unavailable_selected_tool_errors_before_configure(self, monkeypatch):
-        import ucode.cli as cli_mod
+        import lucode.cli as cli_mod
 
         state = {**MINIMAL_STATE, "available_tools": []}
         monkeypatch.setattr(
@@ -513,7 +513,7 @@ class TestConfigureAgentsSelection:
             cli_mod.configure_workspace_command(selected_tools=["opencode", "pi"])
 
     def test_multiple_workspaces_configure_all_and_use_first(self, monkeypatch):
-        import ucode.cli as cli_mod
+        import lucode.cli as cli_mod
 
         states = {
             "https://first.com": {**MINIMAL_STATE, "workspace": "https://first.com"},
@@ -568,7 +568,7 @@ class TestConfigureAgentsSelection:
 class TestParseProfilesOption:
     @staticmethod
     def _patch_profiles(monkeypatch, entries):
-        import ucode.cli as cli_mod
+        import lucode.cli as cli_mod
 
         monkeypatch.setattr(cli_mod, "list_profile_entries", lambda: entries)
         return cli_mod
@@ -615,7 +615,7 @@ class TestConfigureSharedStateMcpCleanup:
 
     @staticmethod
     def _stub_external_deps(monkeypatch):
-        import ucode.cli as cli_mod
+        import lucode.cli as cli_mod
 
         monkeypatch.setattr(cli_mod, "normalize_workspace_url", lambda w: w)
         monkeypatch.setattr(cli_mod, "run_databricks_login", lambda w, p: None)
@@ -630,7 +630,7 @@ class TestConfigureSharedStateMcpCleanup:
         monkeypatch.setattr(cli_mod, "build_shared_base_urls", lambda w: {})
 
     def test_purges_residue_when_workspace_changes(self, monkeypatch):
-        import ucode.cli as cli_mod
+        import lucode.cli as cli_mod
 
         self._stub_external_deps(monkeypatch)
         monkeypatch.setattr(
@@ -650,7 +650,7 @@ class TestConfigureSharedStateMcpCleanup:
         assert called_workspace == "https://new.databricks.com"
 
     def test_skips_purge_when_workspace_unchanged(self, monkeypatch):
-        import ucode.cli as cli_mod
+        import lucode.cli as cli_mod
 
         self._stub_external_deps(monkeypatch)
         monkeypatch.setattr(
@@ -677,7 +677,7 @@ class TestConfigureSharedStateSkipPreflight:
 
     @staticmethod
     def _stub(monkeypatch):
-        import ucode.cli as cli_mod
+        import lucode.cli as cli_mod
 
         def _boom(name):
             def _f(*a, **k):
@@ -734,14 +734,14 @@ class TestFetchManagedConfig:
 
     @staticmethod
     def _fetch(state, *, skip_preflight=False):
-        import ucode.cli as cli_mod
+        import lucode.cli as cli_mod
 
         return cli_mod._fetch_managed_config(state, skip_preflight=skip_preflight)
 
     def test_fetches_fresh_when_enabled(self, monkeypatch):
         monkeypatch.setenv("ENABLE_MANAGED_AGENT_CONFIG", "1")
         monkeypatch.setattr(
-            "ucode.cli.refresh_managed_config", lambda state: ({"enabled_agents": {}}, None)
+            "lucode.cli.refresh_managed_config", lambda state: ({"enabled_agents": {}}, None)
         )
         assert self._fetch({"workspace": "https://w"}) == ({"enabled_agents": {}}, None)
 
@@ -754,7 +754,7 @@ class TestFetchManagedConfig:
             monkeypatch.setenv("ENABLE_MANAGED_AGENT_CONFIG", env_value)
         for name in ("refresh_managed_config", "load_managed_state"):
             monkeypatch.setattr(
-                f"ucode.cli.{name}",
+                f"lucode.cli.{name}",
                 lambda *a, called=name, **k: pytest.fail(f"{called} must not run when disabled"),
             )
         assert self._fetch({"workspace": "https://w"}) == (None, None)
@@ -763,9 +763,9 @@ class TestFetchManagedConfig:
         # Headless launchers pass --skip-preflight to avoid per-launch network calls.
         monkeypatch.setenv("ENABLE_MANAGED_AGENT_CONFIG", "1")
         monkeypatch.setattr(
-            "ucode.cli.refresh_managed_config", lambda state: pytest.fail("should not fetch")
+            "lucode.cli.refresh_managed_config", lambda state: pytest.fail("should not fetch")
         )
-        monkeypatch.setattr("ucode.cli.load_managed_state", lambda ws: {"enabled_agents": {}})
+        monkeypatch.setattr("lucode.cli.load_managed_state", lambda ws: {"enabled_agents": {}})
         assert self._fetch({"workspace": "https://w"}, skip_preflight=True) == (
             {"enabled_agents": {}},
             None,
@@ -773,11 +773,11 @@ class TestFetchManagedConfig:
 
     def test_skip_preflight_with_an_empty_cache_is_none(self, monkeypatch):
         monkeypatch.setenv("ENABLE_MANAGED_AGENT_CONFIG", "1")
-        monkeypatch.setattr("ucode.cli.load_managed_state", lambda ws: {})
+        monkeypatch.setattr("lucode.cli.load_managed_state", lambda ws: {})
         assert self._fetch({"workspace": "https://w"}, skip_preflight=True) == (None, None)
 
     def test_bare_launch_reports_read_failure_instead_of_absence(self, monkeypatch, capsys):
-        import ucode.cli as cli_mod
+        import lucode.cli as cli_mod
 
         monkeypatch.setenv("ENABLE_MANAGED_AGENT_CONFIG", "1")
         monkeypatch.setattr(cli_mod, "install_databricks_cli", lambda: None)
@@ -795,31 +795,31 @@ class TestFetchManagedConfig:
         output = capsys.readouterr().out
         assert "Could not read" in output
         assert "HTTP 500" in output
-        assert "Run `ucode <agent>`" in output
+        assert "Run `lucode <agent>`" in output
 
 
 class TestConfigureDeprecation:
-    """`ucode configure` is refused once a managed config exists, since the admin's wins anyway."""
+    """`lucode configure` is refused once a managed config exists, since the admin's wins anyway."""
 
     @staticmethod
     def _reject():
-        import ucode.cli as cli_mod
+        import lucode.cli as cli_mod
 
         cli_mod._reject_configure_under_managed_config()
 
     def test_blocks_when_a_managed_config_exists(self, monkeypatch):
         monkeypatch.setenv("ENABLE_MANAGED_AGENT_CONFIG", "1")
-        monkeypatch.setattr("ucode.cli.load_state", lambda: {"workspace": "https://w"})
-        monkeypatch.setattr("ucode.cli.load_managed_state", lambda ws: {"enabled_agents": {}})
+        monkeypatch.setattr("lucode.cli.load_state", lambda: {"workspace": "https://w"})
+        monkeypatch.setattr("lucode.cli.load_managed_state", lambda ws: {"enabled_agents": {}})
         with pytest.raises(RuntimeError, match="being deprecated") as exc:
             self._reject()
-        assert "Please run `ucode`" in str(exc.value)
+        assert "Please run `lucode`" in str(exc.value)
 
     def test_silent_and_proceeds_without_a_managed_config(self, monkeypatch, capsys):
-        # Setting up a new workspace still goes through `ucode configure`, so say nothing.
+        # Setting up a new workspace still goes through `lucode configure`, so say nothing.
         monkeypatch.setenv("ENABLE_MANAGED_AGENT_CONFIG", "1")
-        monkeypatch.setattr("ucode.cli.load_state", lambda: {"workspace": "https://w"})
-        monkeypatch.setattr("ucode.cli.load_managed_state", lambda ws: None)
+        monkeypatch.setattr("lucode.cli.load_state", lambda: {"workspace": "https://w"})
+        monkeypatch.setattr("lucode.cli.load_managed_state", lambda ws: None)
         self._reject()
         assert capsys.readouterr().out == ""
 
@@ -830,7 +830,7 @@ class TestConfigureDeprecation:
         else:
             monkeypatch.setenv("ENABLE_MANAGED_AGENT_CONFIG", env_value)
         monkeypatch.setattr(
-            "ucode.cli.load_managed_state",
+            "lucode.cli.load_managed_state",
             lambda ws: pytest.fail("must not read the config when disabled"),
         )
         self._reject()

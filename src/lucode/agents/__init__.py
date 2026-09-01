@@ -8,11 +8,11 @@ import subprocess
 
 from rich.panel import Panel
 
-from ucode.config_io import ToolSpec, restore_file
-from ucode.databricks.auth import install_ai_tools, install_databricks_cli
-from ucode.state import load_state, save_state
-from ucode.telemetry import agent_version
-from ucode.ui import (
+from lucode.config_io import ToolSpec, restore_file
+from lucode.databricks.auth import install_ai_tools, install_databricks_cli
+from lucode.state import load_state, save_state
+from lucode.telemetry import agent_version
+from lucode.ui import (
     console,
     is_low_verbosity,
     print_err,
@@ -137,7 +137,7 @@ def ensure_tool_binary_available(tool: str) -> None:
     raise RuntimeError(
         f"{spec['display']} is not installed (`{spec['binary']}` was not found on PATH). "
         f"Install it with `npm install -g {spec['package']}` or run "
-        "`ucode configure` to try automatic installation."
+        "`lucode configure` to try automatic installation."
     )
 
 
@@ -163,7 +163,7 @@ def resolve_launch_model(
     model = explicit_model or default_model_for_tool(tool, state)
     if not model:
         raise RuntimeError(
-            f"No models available for {tool}. Run `ucode configure` to set up your workspace."
+            f"No models available for {tool}. Run `lucode configure` to set up your workspace."
         )
     return state, model
 
@@ -249,11 +249,11 @@ def ensure_provider_state(tool: str) -> dict:
     """Validate that a workspace and the selected tool are configured."""
     state = load_state()
     if not state.get("workspace"):
-        raise RuntimeError("No workspace configured. Run `ucode configure` first.")
+        raise RuntimeError("No workspace configured. Run `lucode configure` first.")
     if tool not in (state.get("available_tools") or []):
         raise RuntimeError(
             f"{TOOL_SPECS[tool]['display']} is not available on this workspace. "
-            "Run `ucode configure` to set up your agents."
+            "Run `lucode configure` to set up your agents."
         )
     return state
 
@@ -334,7 +334,7 @@ def validate_all_tools(state: dict) -> None:
     success_tools = [tool for tool, ok in results if ok]
     if success_tools and not low_verbosity:
         lines = [
-            f"[green]✓[/green] [bold]{TOOL_SPECS[tool]['display']}[/bold] — run with [cyan]ucode {tool}[/cyan]"
+            f"[green]✓[/green] [bold]{TOOL_SPECS[tool]['display']}[/bold] — run with [cyan]lucode {tool}[/cyan]"
             for tool in success_tools
         ]
         console.print(Panel("\n".join(lines), title="Ready", style="green", expand=False))

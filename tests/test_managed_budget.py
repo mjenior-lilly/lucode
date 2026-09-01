@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from ucode.managed_budget import (
+from lucode.managed_budget import (
     BUDGET_WARN_AT,
     budget_state,
     budget_usage_percent,

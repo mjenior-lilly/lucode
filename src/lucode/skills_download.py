@@ -8,11 +8,11 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.parse import urlencode
 
-from ucode.databricks.auth import get_databricks_token
-from ucode.databricks.transport import http_get_bytes, http_get_json, workspace_hostname
-from ucode.mcp import register_schemaless_skills_connection, setup_mcp_clients
-from ucode.state import load_state
-from ucode.ui import (
+from lucode.databricks.auth import get_databricks_token
+from lucode.databricks.transport import http_get_bytes, http_get_json, workspace_hostname
+from lucode.mcp import register_schemaless_skills_connection, setup_mcp_clients
+from lucode.state import load_state
+from lucode.ui import (
     console,
     print_note,
     print_success,
@@ -174,7 +174,7 @@ def _is_valid_leaf(leaf: str) -> bool:
 def _safe_relative_path(relative_path: str) -> Path | None:
     """A bundle file's path within its skill dir, or None if it escapes the dir.
 
-    The Files API returns server-controlled paths, but ucode writes them to
+    The Files API returns server-controlled paths, but lucode writes them to
     disk, so reject absolute paths and any ``..`` traversal.
     """
     path = Path(relative_path)

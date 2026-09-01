@@ -1,7 +1,7 @@
 """Helpers for building the outbound `User-Agent` we attach to agent traffic.
 
-The gateway uses the UA to attribute requests to ucode and to a specific
-wrapped agent + version. Format: `ucode/<ucode_ver> <agent>/<agent_ver>`.
+The gateway uses the UA to attribute requests to lucode and to a specific
+wrapped agent + version. Format: `lucode/<lucode_ver> <agent>/<agent_ver>`.
 
 Both helpers fall back to "unknown" rather than raising — telemetry must
 never block a launch.
@@ -18,9 +18,9 @@ _SEMVER_RE = re.compile(r"\d+\.\d+\.\d+[-+0-9A-Za-z.]*")
 
 
 @cache
-def ucode_version() -> str:
+def lucode_version() -> str:
     try:
-        return version("ucode")
+        return version("lucode")
     except PackageNotFoundError:
         return "unknown"
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""CLI entry point for ucode."""
+"""CLI entry point for lucode."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from typing import Annotated
 import typer
 from rich.panel import Panel
 
-from ucode.agents import (
+from lucode.agents import (
     TOOL_SPECS,
     check_gateway_endpoint,
     configure_selected_tools,
@@ -22,12 +22,12 @@ from ucode.agents import (
     validate_all_tools,
     validate_tool,
 )
-from ucode.agents import (
+from lucode.agents import (
     launch as launch_agent,
 )
-from ucode.agents.pi import PI_SETTINGS_BACKUP_PATH, PI_SETTINGS_PATH
-from ucode.config_io import is_dry_run, restore_file, set_dry_run
-from ucode.databricks.auth import (
+from lucode.agents.pi import PI_SETTINGS_BACKUP_PATH, PI_SETTINGS_PATH
+from lucode.config_io import is_dry_run, restore_file, set_dry_run
+from lucode.databricks.auth import (
     apply_pat_environment,
     ensure_databricks_auth,
     ensure_pat_bearer,
@@ -39,8 +39,8 @@ from ucode.databricks.auth import (
     resolve_pat_token,
     run_databricks_login,
 )
-from ucode.databricks.managed import is_workspace_admin
-from ucode.databricks.models import (
+from lucode.databricks.managed import is_workspace_admin
+from lucode.databricks.models import (
     build_shared_base_urls,
     discover_claude_models,
     discover_codex_models,
@@ -48,18 +48,18 @@ from ucode.databricks.models import (
     discover_model_services,
     ensure_ai_gateway_v2,
 )
-from ucode.managed_budget import (
+from lucode.managed_budget import (
     budget_usage_percent,
     recommendation_line,
     render_budget_panel,
 )
-from ucode.managed_config import (
+from lucode.managed_config import (
     get_model_recommendation,
     load_managed_state,
     managed_agent_config_enabled,
     refresh_managed_config,
 )
-from ucode.managed_resolve import (
+from lucode.managed_resolve import (
     managed_default_model,
     managed_enabled_tools,
     managed_launch_model,
@@ -68,8 +68,8 @@ from ucode.managed_resolve import (
     recommended_agent,
     resolve_state,
 )
-from ucode.managed_wizard import apply_command, setup_command, show_command
-from ucode.mcp import (
+from lucode.managed_wizard import apply_command, setup_command, show_command
+from lucode.mcp import (
     MCP_CLIENTS,
     SKILLS_MCP_KIND,
     configure_mcp_command,
@@ -77,15 +77,15 @@ from ucode.mcp import (
     purge_cross_workspace_mcp_residue,
     revert_mcp_configs,
 )
-from ucode.skills_download import configure_skills_download_command
-from ucode.state import (
+from lucode.skills_download import configure_skills_download_command
+from lucode.state import (
     STATE_PATH,
     clear_state,
     load_state,
     save_state,
     set_current_workspace,
 )
-from ucode.ui import (
+from lucode.ui import (
     console,
     heading,
     normalize_workspace_url,
@@ -104,7 +104,7 @@ from ucode.ui import (
     spinner,
     status_badge,
 )
-from ucode.usage import usage as usage_report
+from lucode.usage import usage as usage_report
 
 _DISCOVERY_CONSUMERS: dict[str, tuple[str, ...]] = {
     "claude": ("opencode", "pi"),
@@ -178,7 +178,7 @@ def _print_managed_summary(managed: dict, state: dict, tool: str) -> None:
 
 
 def _reject_configure_under_managed_config() -> None:
-    """Refuse ``ucode configure`` when the workspace publishes a managed config.
+    """Refuse ``lucode configure`` when the workspace publishes a managed config.
 
     Configuring locally would be overridden at launch anyway, so it is an error rather than a
     silently-ignored run. Without a managed config the command still runs unchanged.
@@ -187,7 +187,7 @@ def _reject_configure_under_managed_config() -> None:
         return
     if load_managed_state(load_state().get("workspace")):
         raise RuntimeError(
-            "The ucode configure command is being deprecated. Please run `ucode` to launch "
+            "The lucode configure command is being deprecated. Please run `lucode` to launch "
             "with your admin's managed config applied"
         )
 
@@ -211,7 +211,7 @@ def _print_discovery_diagnostics(state: dict) -> None:
             print_note(f"{label} (needed for: {consumers}): {reason}")
         else:
             print_note(f"{label} (needed for: {consumers}): no models returned")
-    print_note("Re-run with `UCODE_DEBUG=1` to log raw discovery responses to ~/.ucode/debug.log.")
+    print_note("Re-run with `lucode_DEBUG=1` to log raw discovery responses to ~/.lucode/debug.log.")
 
 
 def _prompt_for_configuration(tool: str | None = None) -> tuple[str, str | None]:
@@ -348,7 +348,7 @@ def configure_shared_state(
     don't error out. If ``None``, we resolve it from the host after login.
     If skip_preflight is True, skip the entire preflight block below — auth
     validation, the AI Gateway probe, and model discovery — trusting a prior
-    ``ucode configure``. The PAT/bearer is already exported (``apply_pat_environment``
+    ``lucode configure``. The PAT/bearer is already exported (``apply_pat_environment``
     in ``_launch_tool``) and the gateway was verified by that earlier configure.
     Only the local profile resolution and the shared state assembly still run;
     the saved model lists are preserved.
@@ -373,7 +373,7 @@ def configure_shared_state(
     # each path below resolves it once, where a host->profile lookup is reliable
     # (the skip branch trusts the prior configure; the preflight resolves after
     # login). --skip-preflight persists exactly this and returns, trusting a prior
-    # `ucode configure` — it already validated auth + the AI Gateway and saved the
+    # `lucode configure` — it already validated auth + the AI Gateway and saved the
     # model lists (carried over by load_state, left untouched).
     state = load_state()
     state["workspace"] = workspace
@@ -395,14 +395,14 @@ def configure_shared_state(
     state["base_urls"] = build_shared_base_urls(workspace)
 
     if skip_preflight:
-        # A prior `ucode configure` created the profile; resolve it locally (no
+        # A prior `lucode configure` created the profile; resolve it locally (no
         # login needed) and persist it so launches disambiguate.
         if profile is None:
             profile = find_profile_name_for_host(workspace)
             if profile:
                 state["profile"] = profile
         save_state(state)
-        # Scrub MCP entries ucode wrote for a previous workspace.
+        # Scrub MCP entries lucode wrote for a previous workspace.
         if previous_workspace and previous_workspace != workspace:
             purge_cross_workspace_mcp_residue(state, workspace)
         # Diagnostic reasons are transient (attached after save_state so they
@@ -530,7 +530,7 @@ def configure_shared_state(
         save_state(state_to_save)
     else:
         save_state(state)
-    # Scrub MCP entries that ucode wrote for the previous workspace so the new
+    # Scrub MCP entries that lucode wrote for the previous workspace so the new
     # workspace's agent configs aren't stale.
     if previous_workspace and previous_workspace != workspace:
         purge_cross_workspace_mcp_residue(state, workspace)
@@ -716,7 +716,7 @@ def status() -> int:
     mcp_servers = state.get("mcp_servers") or []
     configured_tools = set(state.get("available_tools") or managed_configs.keys())
 
-    console.print(heading("ucode status"))
+    console.print(heading("lucode status"))
     console.print(
         f"  {status_badge('Configured', 'ok') if workspace else status_badge('Not Configured', 'warn')}"
     )
@@ -750,7 +750,7 @@ def status() -> int:
             print_kv("MCP list command", str(MCP_CLIENTS[tool]["list_command"]))
             print_kv(
                 "MCP servers",
-                ", ".join(tool_mcp_servers) if tool_mcp_servers else "none saved by ucode",
+                ", ".join(tool_mcp_servers) if tool_mcp_servers else "none saved by lucode",
             )
         print_kv("Config file", str(config_path) if config_path.exists() else "missing")
         console.print()
@@ -774,14 +774,14 @@ def status() -> int:
 
     print_heading("State")
     print_kv("State file", str(STATE_PATH) if STATE_PATH.exists() else "missing")
-    print_note("Use `ucode configure` to update workspace settings or configure new tools.")
+    print_note("Use `lucode configure` to update workspace settings or configure new tools.")
     print_note(
-        "Use `ucode configure mcp` to add Databricks MCP servers to configured coding tools."
+        "Use `lucode configure mcp` to add Databricks MCP servers to configured coding tools."
     )
     print_note(
-        "Use `ucode configure skills` to set up Unity Catalog Skills for configured coding tools."
+        "Use `lucode configure skills` to set up Unity Catalog Skills for configured coding tools."
     )
-    print_note("Use `ucode revert` to clear managed configs and restore prior files.")
+    print_note("Use `lucode revert` to clear managed configs and restore prior files.")
     return 0
 
 
@@ -811,7 +811,7 @@ def revert() -> int:
             f"{spec['display']} MCP config",
             "restored" if mcp_results.get(client) else "unchanged",
         )
-    print_success("ucode state cleared")
+    print_success("lucode state cleared")
     return 0
 
 
@@ -828,7 +828,7 @@ app = typer.Typer(
 configure_app = typer.Typer(add_completion=False, no_args_is_help=False)
 app.add_typer(configure_app, name="configure", help="Configure workspace and tool settings.")
 mcp_app = typer.Typer(add_completion=False, no_args_is_help=True)
-app.add_typer(mcp_app, name="mcp", help="MCP servers exposed by ucode.")
+app.add_typer(mcp_app, name="mcp", help="MCP servers exposed by lucode.")
 setup_app = typer.Typer(add_completion=False, no_args_is_help=False)
 app.add_typer(
     setup_app, name="setup", help="Author the workspace's managed coding config (admins only)."
@@ -838,9 +838,9 @@ app.add_typer(
 def _version_callback(value: bool) -> None:
     if value:
         # Keep version-only startup independent of telemetry's optional runtime work.
-        from ucode.telemetry import ucode_version
+        from lucode.telemetry import lucode_version
 
-        print(ucode_version())
+        print(lucode_version())
         raise typer.Exit()
 
 
@@ -866,17 +866,17 @@ def mcp_proxy_cmd(
     """Bridge a coding agent's stdio MCP transport to a Databricks MCP endpoint.
 
     Each configured client spawns this as a local stdio MCP server (see
-    `ucode configure mcp`); it forwards messages to ``--url`` and injects the
+    `lucode configure mcp`); it forwards messages to ``--url`` and injects the
     configured OAuth credential or a PAT activated once before startup. OAuth
     tokens are refreshed through the normal token path per request. Not meant
     for interactive use — the agent manages this process's lifecycle."""
     # The proxy server stack is needed only for this hidden subprocess command.
-    from ucode.mcp_proxy import serve
+    from lucode.mcp_proxy import serve
 
     state = load_state()
     workspace = host or state.get("workspace")
     if not workspace:
-        print_err("No workspace configured. Run `ucode configure` first.")
+        print_err("No workspace configured. Run `lucode configure` first.")
         raise typer.Exit(1)
     profile = profile or state.get("profile")
     serve(url, workspace, profile, use_pat=use_pat or bool(state.get("use_pat")))
@@ -906,7 +906,7 @@ def auth_token_cmd(
     state = load_state()
     workspace = host or state.get("workspace")
     if not workspace:
-        print_err("No workspace configured. Run `ucode configure` first.")
+        print_err("No workspace configured. Run `lucode configure` first.")
         raise typer.Exit(1)
     profile = profile or state.get("profile")
     if use_pat or state.get("use_pat"):
@@ -919,7 +919,7 @@ def auth_token_cmd(
                 f"--use-pat: no personal access token available for profile "
                 f"'{profile or '<none>'}'. Add a `token = <PAT>` entry under "
                 f"[{profile or 'your-profile'}] in ~/.databrickscfg, or re-run "
-                "`ucode configure` without --use-pat to use OAuth."
+                "`lucode configure` without --use-pat to use OAuth."
             )
             raise typer.Exit(1)
     try:
@@ -1061,7 +1061,7 @@ def _print_budget_panel(recommendation: dict, tool: str, managed: dict | None = 
     line = recommendation_line(display_agent, recommendation.get("model"), percent)
     panel = render_budget_panel(
         recommendation,
-        title=f"ucode with {TOOL_SPECS[tool]['display']}",
+        title=f"lucode with {TOOL_SPECS[tool]['display']}",
         extra_lines=[line] if line else None,
         managed=managed,
     )
@@ -1129,7 +1129,7 @@ def _launch_tool(
         )
         state, resolved_model = resolve_launch_model(tool, state, managed_model)
         state = configure_tool(tool, state, resolved_model)
-        print_section(f"ucode with {TOOL_SPECS[tool]['display']}")
+        print_section(f"lucode with {TOOL_SPECS[tool]['display']}")
         if managed is not None:
             print_kv("Config", "workspace-managed")
         if resolved_model:
@@ -1151,7 +1151,7 @@ def _launch_tool(
 
 
 # Launch-only escape hatch for managed/headless launchers (e.g. omnigent) that
-# have already run `ucode configure`: skip the ~5-10s per-launch auth + AI
+# have already run `lucode configure`: skip the ~5-10s per-launch auth + AI
 # Gateway re-validation. Distinct from the configure-only `--skip-validate`,
 # which skips the model smoke test.
 SkipPreflightOption = Annotated[
@@ -1159,13 +1159,13 @@ SkipPreflightOption = Annotated[
     typer.Option(
         "--skip-preflight",
         help="Skip the per-launch Databricks auth + AI Gateway re-validation, trusting a "
-        "prior `ucode configure`. Launches with your own local settings, ignoring any "
+        "prior `lucode configure`. Launches with your own local settings, ignoring any "
         "workspace managed config.",
     ),
 ]
 
 # Target this launch at a specific workspace, auto-configuring (and logging in)
-# if it hasn't been set up yet — so a launch needs no prior `ucode configure`.
+# if it hasn't been set up yet — so a launch needs no prior `lucode configure`.
 WorkspaceOption = Annotated[
     str | None,
     typer.Option(
@@ -1184,7 +1184,7 @@ def default(
         typer.Option(
             "--version",
             "-V",
-            help="Show the ucode version and exit.",
+            help="Show the lucode version and exit.",
             callback=_version_callback,
             is_eager=True,
         ),
@@ -1228,7 +1228,7 @@ def _launch_managed_default(
     skip_preflight: bool,
     workspace: str | None,
 ) -> None:
-    """Route bare ``ucode`` by whether the workspace publishes a managed config."""
+    """Route bare ``lucode`` by whether the workspace publishes a managed config."""
     if not managed_agent_config_enabled():
         console.print(ctx.get_help())
         return
@@ -1238,13 +1238,13 @@ def _launch_managed_default(
     state = load_state()
     current = state.get("workspace")
     if not current:
-        raise RuntimeError("No workspace configured. Run `ucode configure` first.")
+        raise RuntimeError("No workspace configured. Run `lucode configure` first.")
     apply_pat_environment(state)
     if skip_preflight:
         # Deliberately unmanaged, so no config is read at all — and there is none to name an agent.
         raise RuntimeError(
-            "--skip-preflight launches with your own settings, so `ucode` has no managed config "
-            "to pick an agent from. Run `ucode <agent> --skip-preflight` instead."
+            "--skip-preflight launches with your own settings, so `lucode` has no managed config "
+            "to pick an agent from. Run `lucode <agent> --skip-preflight` instead."
         )
     # --dry-run avoids the fetch but still applies the last saved config.
     managed_read_reason: str | None = None
@@ -1260,14 +1260,14 @@ def _launch_managed_default(
         if dry_run:
             print_warning(
                 "No managed coding agent config is saved locally yet, so there is nothing to "
-                "dry-run. Run `ucode` without --dry-run to pull your workspace's config first."
+                "dry-run. Run `lucode` without --dry-run to pull your workspace's config first."
             )
             return
         if managed_read_reason:
             print_warning(
                 "Could not read your workspace's managed coding agent config "
                 f"({managed_read_reason}); unable to choose a default agent. "
-                "Run `ucode <agent>` to continue with your own settings."
+                "Run `lucode <agent>` to continue with your own settings."
             )
             return
         _print_no_managed_config_guidance(current, state.get("profile"))
@@ -1281,7 +1281,7 @@ def _launch_managed_default(
     if not isinstance(tool, str) or not tool:
         raise RuntimeError(
             "Your workspace's managed config names no agent to launch. Ask an admin to set a "
-            "default agent, or run `ucode <agent>` directly."
+            "default agent, or run `lucode <agent>` directly."
         )
     _print_managed_summary(managed, state, tool)
     _launch_tool(
@@ -1306,10 +1306,10 @@ def _print_no_managed_config_guidance(workspace: str, profile: str | None) -> No
     with spinner("Checking your workspace permissions..."):
         is_admin = is_workspace_admin(workspace, token)
     if is_admin is False:
-        print_note("Ask a workspace admin to set one up with `ucode setup`.")
+        print_note("Ask a workspace admin to set one up with `lucode setup`.")
     else:
         # None means the admin check itself failed; point at setup rather than a dead end.
-        print_note("Run `ucode setup` to configure one for your workspace, then `ucode apply`.")
+        print_note("Run `lucode setup` to configure one for your workspace, then `lucode apply`.")
 
 
 @app.command(
@@ -1438,7 +1438,7 @@ def configure(
         if use_pat and profiles is None:
             raise RuntimeError(
                 "--use-pat requires --profiles. Pass the PAT-backed Databricks CLI "
-                "profile(s) explicitly, e.g. `ucode configure --profiles DEFAULT --use-pat`."
+                "profile(s) explicitly, e.g. `lucode configure --profiles DEFAULT --use-pat`."
             )
         workspace_entries = _parse_workspaces_option(workspaces) if workspaces is not None else None
         if profiles is not None:
@@ -1533,7 +1533,7 @@ def configure(
             if bare:
                 raise RuntimeError(
                     "--mcp names must be fully qualified `<catalog>.<schema>.<name>` "
-                    f"(got: {', '.join(bare)}). Use `ucode configure mcp` for the "
+                    f"(got: {', '.join(bare)}). Use `lucode configure mcp` for the "
                     "interactive picker."
                 )
             configure_mcp_command(services=services)
@@ -1667,7 +1667,7 @@ def setup(
         typer.Option(
             "--from-file",
             help="Skip the interactive flow and load a hand-written managed config (JSON, in "
-            "ucode's manifest shape) instead. Validated before it is saved.",
+            "lucode's manifest shape) instead. Validated before it is saved.",
         ),
     ] = None,
     dry_run: Annotated[
@@ -1700,7 +1700,7 @@ def setup(
 
 @setup_app.command("show")
 def setup_show_cmd() -> None:
-    """Print the authored managed config and the payload `ucode apply` would publish."""
+    """Print the authored managed config and the payload `lucode apply` would publish."""
     try:
         code = show_command()
     except RuntimeError as exc:
@@ -1720,7 +1720,7 @@ def apply_cmd(
     """Publish this workspace's managed coding config (workspace admins only).
 
     Always validates the manifest before publishing (and shows what would change, then confirms), so
-    there is no separate dry-run: `ucode setup` only ever writes a valid manifest, and a
+    there is no separate dry-run: `lucode setup` only ever writes a valid manifest, and a
     hand-editing admin sees any error here before anything reaches the workspace.
     """
     # See the `setup` callback: `typer.Exit` subclasses RuntimeError, so it must be raised after
@@ -1750,7 +1750,7 @@ def status_cmd() -> None:
 
 @app.command("revert")
 def revert_cmd() -> None:
-    """Clear ucode state and restore backed-up agent config files."""
+    """Clear lucode state and restore backed-up agent config files."""
     try:
         revert()
     except RuntimeError as exc:
@@ -1776,10 +1776,10 @@ def usage_cmd(
 
 @app.command("upgrade")
 def upgrade_cmd() -> None:
-    """Upgrade ucode to the latest version from GitHub."""
+    """Upgrade lucode to the latest version from GitHub."""
     import subprocess
 
-    git_url = "git+https://github.com/databricks/ucode"
+    git_url = "git+https://github.com/databricks/lucode"
     print_section("Upgrade")
     print_kv("Source", git_url)
     try:
@@ -1788,12 +1788,12 @@ def upgrade_cmd() -> None:
             check=True,
         )
     except FileNotFoundError:
-        print_err("`uv` was not found on PATH. Install uv to upgrade ucode.")
+        print_err("`uv` was not found on PATH. Install uv to upgrade lucode.")
         raise typer.Exit(1) from None
     except subprocess.CalledProcessError as exc:
         print_err(f"Upgrade failed (exit code {exc.returncode}).")
         raise typer.Exit(1) from None
-    print_success("ucode upgraded")
+    print_success("lucode upgraded")
 
 
 def main() -> None:

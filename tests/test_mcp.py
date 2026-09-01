@@ -4,13 +4,13 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 
-from ucode import mcp
+from lucode import mcp
 
 WS = "https://example.databricks.com"
 
 
 # The proxy argv every client registers as a stdio command. The leading element
-# is the resolved `ucode` binary path, so tests assert the tail (the stable part).
+# is the resolved `lucode` binary path, so tests assert the tail (the stable part).
 GH_URL = f"{WS}/api/2.0/mcp/external/github"
 PROXY_TAIL = ["mcp-proxy", "--url", GH_URL, "--host", WS, "--profile", "p"]
 
@@ -21,7 +21,7 @@ def _unwrap(text: str) -> str:
 
 
 def _proxy_argv() -> list[str]:
-    from ucode.databricks.auth import build_mcp_proxy_argv
+    from lucode.databricks.auth import build_mcp_proxy_argv
 
     return build_mcp_proxy_argv(GH_URL, WS, "p")
 
@@ -70,14 +70,14 @@ class TestMcpServiceEntryNames:
 
 
 class TestBuildMcpProxyArgv:
-    def test_argv_is_ucode_mcp_proxy_command(self):
+    def test_argv_is_lucode_mcp_proxy_command(self):
         argv = _proxy_argv()
-        # First element is the resolved ucode binary; the rest is stable.
+        # First element is the resolved lucode binary; the rest is stable.
         assert argv[1:] == PROXY_TAIL
-        assert argv[0].endswith("ucode") or argv[0] == "ucode"
+        assert argv[0].endswith("lucode") or argv[0] == "lucode"
 
     def test_use_pat_appends_flag_and_profile_optional(self):
-        from ucode.databricks.auth import build_mcp_proxy_argv
+        from lucode.databricks.auth import build_mcp_proxy_argv
 
         with_pat = build_mcp_proxy_argv(GH_URL, WS, "p", use_pat=True)
         assert with_pat[-1] == "--use-pat"

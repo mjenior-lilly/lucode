@@ -14,19 +14,19 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 from urllib.parse import urlparse
 
-from ucode.config_io import APP_DIR
-from ucode.ui import err_console, normalize_workspace_url
+from lucode.config_io import APP_DIR
+from lucode.ui import err_console, normalize_workspace_url
 
 
 def _debug_enabled() -> bool:
-    return os.environ.get("UCODE_DEBUG") == "1"
+    return os.environ.get("lucode_DEBUG") == "1"
 
 
 _DEBUG_LOGGER: logging.Logger | None = None
 
 
 def _get_debug_logger() -> logging.Logger | None:
-    """Lazily configure a rotating file logger when UCODE_DEBUG=1.
+    """Lazily configure a rotating file logger when lucode_DEBUG=1.
 
     Returns the logger on first call (and caches it), or None if debug is
     disabled or the log file could not be opened. A one-time breadcrumb is
@@ -50,17 +50,17 @@ def _get_debug_logger() -> logging.Logger | None:
     except OSError:
         return None
 
-    logger = logging.getLogger("ucode.debug")
+    logger = logging.getLogger("lucode.debug")
     logger.setLevel(logging.DEBUG)
     logger.addHandler(handler)
     logger.propagate = False
     _DEBUG_LOGGER = logger
-    err_console.print(f"[dim]\\[ucode debug] logging to {log_path}[/dim]")
+    err_console.print(f"[dim]\\[lucode debug] logging to {log_path}[/dim]")
     return _DEBUG_LOGGER
 
 
 def debug(label: str, detail: str) -> None:
-    """When UCODE_DEBUG=1, append a timestamped entry to ~/.ucode/debug.log."""
+    """When lucode_DEBUG=1, append a timestamped entry to ~/.lucode/debug.log."""
     logger = _get_debug_logger()
     if logger is not None:
         logger.debug("%s: %s", label, detail)
@@ -131,7 +131,7 @@ def _scrub_text(text: str) -> str:
 def log_auth_diagnostics() -> None:
     """Dump CLI version, profiles, and ~/.databrickscfg (scrubbed) to the debug log.
 
-    No-op unless UCODE_DEBUG=1; cached so it runs at most once per process."""
+    No-op unless lucode_DEBUG=1; cached so it runs at most once per process."""
     if not _debug_enabled():
         return
 
@@ -186,7 +186,7 @@ def http_get_json(
 ) -> tuple[dict | list | None, str | None]:
     """GET a JSON endpoint. Returns (payload, None) on success, (None, reason) on failure.
 
-    Honors UCODE_DEBUG=1 to append status + truncated body to ~/.ucode/debug.log.
+    Honors lucode_DEBUG=1 to append status + truncated body to ~/.lucode/debug.log.
     """
     request = urllib_request.Request(
         url,

@@ -42,14 +42,14 @@ def test_direct_runtime_imports_are_declared():
         "typer": "typer",
     }
     imported: set[str] = set()
-    for path in (ROOT / "src" / "ucode").rglob("*.py"):
+    for path in (ROOT / "src" / "lucode").rglob("*.py"):
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 imported.update(alias.name.partition(".")[0] for alias in node.names)
             elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
                 imported.add(node.module.partition(".")[0])
-    third_party = imported - sys.stdlib_module_names - {"ucode"}
+    third_party = imported - sys.stdlib_module_names - {"lucode"}
     assert third_party <= import_distributions.keys(), "Add distribution mappings for new imports"
     assert {import_distributions[name] for name in third_party} <= declared
 

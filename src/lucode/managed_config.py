@@ -1,17 +1,17 @@
 """Admin-authored managed coding-agent config: fetch, normalize, and local persistence.
 
 An org admin authors a ``CodingAgentConfig`` through the Databricks AI Gateway; developers read it
-(non-admin) and ``ucode`` applies it locally. This module owns the developer-read half:
+(non-admin) and ``lucode`` applies it locally. This module owns the developer-read half:
 
-- fetching the raw manifest (via :func:`ucode.databricks.managed.fetch_managed_coding_agent_configs`),
-- normalizing the proto-JSON into a stable internal dict keyed by ucode's own tool names,
-- persisting it to ``~/.ucode/managed-state.json`` (0600), and
+- fetching the raw manifest (via :func:`lucode.databricks.managed.fetch_managed_coding_agent_configs`),
+- normalizing the proto-JSON into a stable internal dict keyed by lucode's own tool names,
+- persisting it to ``~/.lucode/managed-state.json`` (0600), and
 - re-reading it on each launch, falling back to the persisted copy when the read fails.
 
 :func:`refresh_managed_config` is the launch path's entry point. It is called before model discovery,
 because the manifest decides whether that discovery is needed at all; the launch path then hands the
-manifest to :func:`ucode.managed_resolve.resolve_state` once the state it layers over is final.
-Deciding *which* value wins for a given key is :mod:`ucode.managed_resolve`'s job, kept separate so
+manifest to :func:`lucode.managed_resolve.resolve_state` once the state it layers over is final.
+Deciding *which* value wins for a given key is :mod:`lucode.managed_resolve`'s job, kept separate so
 that logic stays pure and I/O-free.
 """
 
@@ -22,13 +22,13 @@ import os
 from pathlib import Path
 from typing import cast
 
-import ucode.config_io as config_io
-from ucode.databricks.auth import get_databricks_token
-from ucode.databricks.managed import (
+import lucode.config_io as config_io
+from lucode.databricks.auth import get_databricks_token
+from lucode.databricks.managed import (
     fetch_managed_coding_agent_configs,
     fetch_model_recommendation,
 )
-from ucode.ui import console, print_warning
+from lucode.ui import console, print_warning
 
 MANAGED_STATE_PATH = config_io.APP_DIR / "managed-state.json"
 
@@ -39,7 +39,7 @@ MANAGED_CONFIG_ENV_VAR = "ENABLE_MANAGED_AGENT_CONFIG"
 # Shown to a developer when their workspace has no admin-defined managed config yet — the normal
 # case, not an error. Kept here so the CLI (which surfaces it) uses one consistent message.
 
-# CodingAgent proto enum -> ucode tool name. Anything unrecognized (e.g. a newer agent this ucode
+# CodingAgent proto enum -> lucode tool name. Anything unrecognized (e.g. a newer agent this lucode
 # build doesn't know) is dropped during normalization rather than guessed at. Public because the
 # admin-write side (``managed_setup``) inverts these maps to serialize, so a new agent or MCP type
 # only has to be declared once.
@@ -48,7 +48,7 @@ AGENT_ENUM_TO_TOOL: dict[str, str] = {
     "CODING_AGENT_OPENCODE": "opencode",
 }
 
-# McpServerType proto enum -> ucode's short type tag. Mirrors the selection prefixes in ``mcp.py``;
+# McpServerType proto enum -> lucode's short type tag. Mirrors the selection prefixes in ``mcp.py``;
 # the actual name->URL resolution happens there when the manifest is applied (a later change).
 MCP_TYPE_ENUM_TO_TAG: dict[str, str] = {
     "MCP_SERVER_TYPE_UC_SERVICE": "mcp-service",
@@ -107,7 +107,7 @@ def _normalize_model_config(model_config: object) -> dict | None:
 def _normalize_enabled_agent(entry: object) -> tuple[str, dict] | None:
     """Normalize one ``EnabledAgent`` into ``(tool, agent_config)``, or None if unusable.
 
-    Drops entries whose agent enum is unset/unknown to this ucode build.
+    Drops entries whose agent enum is unset/unknown to this lucode build.
     """
     entry_dict = _as_dict(entry)
     if not entry_dict:
@@ -177,9 +177,9 @@ def _normalize_budget_policy(value: object) -> dict | None:
 
 
 def normalize_managed_config(raw: dict) -> dict:
-    """Normalize a raw ``CodingAgentConfig`` proto-JSON dict into ucode's internal shape.
+    """Normalize a raw ``CodingAgentConfig`` proto-JSON dict into lucode's internal shape.
 
-    The internal shape uses ucode's own tool names and short MCP type tags so downstream reconcile
+    The internal shape uses lucode's own tool names and short MCP type tags so downstream reconcile
     and apply code never touches proto enum spellings. Unknown agents / MCP types are dropped.
     """
     raw = _as_dict(raw)
@@ -296,7 +296,7 @@ def _is_permission_denied(reason: str) -> bool:
 
 
 def save_managed_state(workspace: str, config: dict) -> None:
-    """Persist the normalized managed config to ``~/.ucode/managed-state.json`` at mode 0600.
+    """Persist the normalized managed config to ``~/.lucode/managed-state.json`` at mode 0600.
 
     The file is org-authored, not developer-editable — 0600 keeps it readable/writable only by the
     user (a light guard; hard enforcement / sudo ownership is a separate concern). No-op in dry-run.
@@ -407,7 +407,7 @@ def _summarize_read_failure(reason: str) -> str:
 
     ``http_get_json`` appends the raw response body, which for a gateway error is a multi-line JSON
     blob (error_code, message, request_id, trace ids). Surface just the status and the API's own
-    message; the full text is still available under ``UCODE_DEBUG=1``.
+    message; the full text is still available under ``lucode_DEBUG=1``.
     """
     status, _, body = reason.partition(": ")
     body = body.strip()

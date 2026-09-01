@@ -1,24 +1,24 @@
-"""Resolve the effective agent settings from the managed config plus local ucode state.
+"""Resolve the effective agent settings from the managed config plus local lucode state.
 
-The admin-authored manifest (``~/.ucode/managed-state.json``, written by
-:mod:`ucode.managed_config`) and the developer's own ucode state (``~/.ucode/state.json``) stay
+The admin-authored manifest (``~/.lucode/managed-state.json``, written by
+:mod:`lucode.managed_config`) and the developer's own lucode state (``~/.lucode/state.json``) stay
 separate files — they are never merged on disk. This module resolves them at config-write time:
-manifest values win, while omitted values fall back to the developer's ucode state. The resolved
+manifest values win, while omitted values fall back to the developer's lucode state. The resolved
 view is rendered into Pi or OpenCode configuration without rewriting either state file.
 
-Only settings recorded through ucode participate in this fallback. Agent configuration maintained
-outside ucode is owned by the agent and is not read here.
+Only settings recorded through lucode participate in this fallback. Agent configuration maintained
+outside lucode is owned by the agent and is not read here.
 
 Everything here is pure: no I/O, no mutation of the inputs. Fetching and persisting the manifest,
-and handing the resolved state to the agent config writers, live in :mod:`ucode.managed_config`.
+and handing the resolved state to the agent config writers, live in :mod:`lucode.managed_config`.
 """
 
 from __future__ import annotations
 
 from typing import cast
 
-from ucode.databricks.models import ANTHROPIC_FAMILIES, classify_model_family
-from ucode.state import MANAGED_OVERLAY_KEY
+from lucode.databricks.models import ANTHROPIC_FAMILIES, classify_model_family
+from lucode.state import MANAGED_OVERLAY_KEY
 
 
 def _as_dict(value: object) -> dict[str, object]:
@@ -125,7 +125,7 @@ def _bucket_by_provider(models: list[str]) -> dict[str, list[str]]:
 def managed_enabled_tools(managed: dict) -> list[str]:
     """The tools the managed config enables, in the config's own order.
 
-    Every entry is an agent ucode recognizes: ``normalize_managed_config`` drops enum values this
+    Every entry is an agent lucode recognizes: ``normalize_managed_config`` drops enum values this
     build doesn't know, so an unrecognized agent never reaches here."""
     return list(_as_dict(_as_dict(managed).get("enabled_agents")))
 
@@ -181,7 +181,7 @@ def resolve_state(managed: dict, state: dict, tool: str) -> dict:
 
     ``write_tool_config`` reads its models out of the state dict it is handed, so
     handing it this resolved copy is what makes managed settings win. Each key the managed config
-    displaces is recorded under :data:`~ucode.state.MANAGED_OVERLAY_KEY` with the developer's own
+    displaces is recorded under :data:`~lucode.state.MANAGED_OVERLAY_KEY` with the developer's own
     value (None when they had none), which ``save_state`` swaps back before writing — so the admin's
     settings reach the generated agent config files without ``state.json`` losing what the developer
     configured. The two files are never merged on disk.

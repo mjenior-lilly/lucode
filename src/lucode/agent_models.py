@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from ucode.databricks.models import ANTHROPIC_FAMILIES, classify_model_family
+from lucode.databricks.models import ANTHROPIC_FAMILIES, classify_model_family
 
 
 def pi_default_model(state: dict) -> str | None:

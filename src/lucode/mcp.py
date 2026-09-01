@@ -23,14 +23,14 @@ from questionary.prompts.common import InquirerControl
 from questionary.question import Question
 from questionary.styles import merge_styles_default
 
-from ucode.agents import opencode
-from ucode.databricks.auth import (
+from lucode.agents import opencode
+from lucode.databricks.auth import (
     apply_pat_environment,
     build_mcp_proxy_argv,
     ensure_databricks_auth,
     get_databricks_token,
 )
-from ucode.databricks.mcp_discovery import (
+from lucode.databricks.mcp_discovery import (
     build_mcp_service_url,
     build_skills_mcp_url,
     list_all_mcp_services,
@@ -41,9 +41,9 @@ from ucode.databricks.mcp_discovery import (
     list_uc_functions_catalog_schemas,
     list_vector_search_catalog_schemas,
 )
-from ucode.databricks.transport import workspace_hostname
-from ucode.state import load_full_state, load_state, save_state
-from ucode.ui import (
+from lucode.databricks.transport import workspace_hostname
+from lucode.state import load_full_state, load_state, save_state
+from lucode.ui import (
     console,
     print_kv,
     print_note,
@@ -439,7 +439,7 @@ def _partition_mcp_entries_by_workspace(
 
 
 def _mcp_entries_only_in_other_workspaces(current_workspace: str) -> dict[str, set[str]]:
-    """Return ``{name: {client, ...}}`` for MCPs ucode tracks only in workspaces other than ``current_workspace``."""
+    """Return ``{name: {client, ...}}`` for MCPs lucode tracks only in workspaces other than ``current_workspace``."""
     full_state = load_full_state()
     workspaces = full_state.get("workspaces")
     if not isinstance(workspaces, dict):
@@ -1325,7 +1325,7 @@ def setup_mcp_clients(state: dict, section: str) -> tuple[str, str | None, list[
     """
     workspace = state.get("workspace")
     if not workspace:
-        raise RuntimeError("Workspace is not configured. Run `ucode configure` first.")
+        raise RuntimeError("Workspace is not configured. Run `lucode configure` first.")
 
     purge_cross_workspace_mcp_residue(state, workspace)
 
@@ -1335,7 +1335,7 @@ def setup_mcp_clients(state: dict, section: str) -> tuple[str, str | None, list[
     clients = configured_mcp_clients(state, installed_clients)
     if not clients:
         raise RuntimeError(
-            "No configured MCP-capable coding agents are installed. Run `ucode configure` "
+            "No configured MCP-capable coding agents are installed. Run `lucode configure` "
             "for OpenCode first."
         )
     configured_tools = set(state.get("available_tools") or [])
@@ -1352,7 +1352,7 @@ def setup_mcp_clients(state: dict, section: str) -> tuple[str, str | None, list[
     print_note(f"Configuring for: {client_names}")
     for client in missing_clients:
         print_warning(
-            f"{MCP_CLIENTS[client]['display']} is configured in ucode but not installed; "
+            f"{MCP_CLIENTS[client]['display']} is configured in lucode but not installed; "
             "skipping MCP config."
         )
     return workspace, profile, clients
@@ -1579,7 +1579,7 @@ def _print_skills_summary(entry: dict) -> None:
     print_kv("Configured", ", ".join(clients) if clients else "none")
     print_kv("Tools", _skills_tools_description(entry.get("skill_locations") or []))
     print_note(
-        "Run `ucode <agent>` to use the skills MCP. For existing sessions, "
+        "Run `lucode <agent>` to use the skills MCP. For existing sessions, "
         "restart the agent for the skills to take effect."
     )
 

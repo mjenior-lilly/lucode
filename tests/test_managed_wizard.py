@@ -1,4 +1,4 @@
-"""Tests for the interactive `ucode setup` flow and its CLI wiring (Pi/OpenCode only).
+"""Tests for the interactive `lucode setup` flow and its CLI wiring (Pi/OpenCode only).
 
 The wizard is mostly orchestration, so these focus on the parts where it can silently produce a
 wrong manifest: reading MCP/skills back out of ``state.json``, classifying MCP URLs into
@@ -14,12 +14,12 @@ import pytest
 import typer.main
 from typer.testing import CliRunner
 
-import ucode.cli as cli_mod
-import ucode.config_io as config_io_mod
-import ucode.managed_setup as managed_setup_mod
-import ucode.managed_wizard as wizard
-from ucode.cli import app
-from ucode.managed_setup import validate_manifest
+import lucode.cli as cli_mod
+import lucode.config_io as config_io_mod
+import lucode.managed_setup as managed_setup_mod
+import lucode.managed_wizard as wizard
+from lucode.cli import app
+from lucode.managed_setup import validate_manifest
 
 runner = CliRunner()
 
@@ -43,7 +43,7 @@ STATE = {
 
 @pytest.fixture(autouse=True)
 def _isolate_settings(tmp_path, monkeypatch):
-    """Point the manifest path at a tmp dir so no test touches the real ~/.ucode."""
+    """Point the manifest path at a tmp dir so no test touches the real ~/.lucode."""
     monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
     monkeypatch.setattr(
         managed_setup_mod, "MANAGED_SETTINGS_PATH", tmp_path / "managed-settings.json"
@@ -91,7 +91,7 @@ class TestMcpServersFromState:
         ]
 
     def test_skips_the_skills_registry_entry(self):
-        from ucode.mcp import SKILLS_MCP_KIND
+        from lucode.mcp import SKILLS_MCP_KIND
 
         state = {
             "mcp_servers": [
@@ -588,7 +588,7 @@ class TestCancelledPromptsAbort:
         assert text.call_args.kwargs.get("required") is True
 
     def test_require_text_aborts_on_closed_stdin(self):
-        with patch("ucode.ui.console.input", side_effect=EOFError):
+        with patch("lucode.ui.console.input", side_effect=EOFError):
             with pytest.raises(KeyboardInterrupt):
                 wizard._require_text("Default model")
 
@@ -681,7 +681,7 @@ class TestApplyCommand:
 
     def test_unauthored_config_is_an_actionable_error(self):
         with patch.object(wizard, "load_state", return_value={"workspace": WORKSPACE}):
-            with pytest.raises(RuntimeError, match="ucode setup"):
+            with pytest.raises(RuntimeError, match="lucode setup"):
                 wizard.apply_command()
 
     def test_creates_when_no_config_exists(self):
@@ -694,7 +694,7 @@ class TestApplyCommand:
 
         assert self._run(create_coding_agent_config=fake_create) == 0
         assert created["workspace"] == WORKSPACE
-        # What goes over the wire is proto-JSON, not ucode's manifest shape.
+        # What goes over the wire is proto-JSON, not lucode's manifest shape.
         assert created["payload"]["default_agent"] == "CODING_AGENT_PI"
 
     def test_updates_in_place_when_a_config_exists(self):
@@ -862,8 +862,8 @@ class TestCliWiring:
 
     def test_successful_setup_exits_zero(self):
         with (
-            patch("ucode.cli.install_databricks_cli"),
-            patch("ucode.cli.setup_command", return_value=0) as setup,
+            patch("lucode.cli.install_databricks_cli"),
+            patch("lucode.cli.setup_command", return_value=0) as setup,
         ):
             result = runner.invoke(app, ["setup"])
         assert result.exit_code == 0
@@ -872,16 +872,16 @@ class TestCliWiring:
 
     def test_nonzero_setup_propagates(self):
         with (
-            patch("ucode.cli.install_databricks_cli"),
-            patch("ucode.cli.setup_command", return_value=1),
+            patch("lucode.cli.install_databricks_cli"),
+            patch("lucode.cli.setup_command", return_value=1),
         ):
             result = runner.invoke(app, ["setup"])
         assert result.exit_code == 1
 
     def test_runtime_error_is_reported_and_exits_1(self):
         with (
-            patch("ucode.cli.install_databricks_cli"),
-            patch("ucode.cli.setup_command", side_effect=RuntimeError("you are not an admin")),
+            patch("lucode.cli.install_databricks_cli"),
+            patch("lucode.cli.setup_command", side_effect=RuntimeError("you are not an admin")),
         ):
             result = runner.invoke(app, ["setup"])
         assert result.exit_code == 1
@@ -889,31 +889,31 @@ class TestCliWiring:
 
     def test_interrupt_exits_130(self):
         with (
-            patch("ucode.cli.install_databricks_cli"),
-            patch("ucode.cli.setup_command", side_effect=KeyboardInterrupt),
+            patch("lucode.cli.install_databricks_cli"),
+            patch("lucode.cli.setup_command", side_effect=KeyboardInterrupt),
         ):
             result = runner.invoke(app, ["setup"])
         assert result.exit_code == 130
 
     def test_from_file_is_forwarded(self):
         with (
-            patch("ucode.cli.install_databricks_cli"),
-            patch("ucode.cli.setup_command", return_value=0) as setup,
+            patch("lucode.cli.install_databricks_cli"),
+            patch("lucode.cli.setup_command", return_value=0) as setup,
         ):
             runner.invoke(app, ["setup", "--from-file", "/tmp/x.json"])
         assert setup.call_args.kwargs["from_file"] == "/tmp/x.json"
 
     def test_dry_run_sets_the_flag(self):
         with (
-            patch("ucode.cli.install_databricks_cli"),
-            patch("ucode.cli.setup_command", return_value=0),
-            patch("ucode.cli.set_dry_run") as set_flag,
+            patch("lucode.cli.install_databricks_cli"),
+            patch("lucode.cli.setup_command", return_value=0),
+            patch("lucode.cli.set_dry_run") as set_flag,
         ):
             runner.invoke(app, ["setup", "--dry-run"])
         set_flag.assert_called_once_with(True)
 
     def test_show_exits_zero(self):
-        with patch("ucode.cli.show_command", return_value=0):
+        with patch("lucode.cli.show_command", return_value=0):
             result = runner.invoke(app, ["setup", "show"])
         assert result.exit_code == 0
 

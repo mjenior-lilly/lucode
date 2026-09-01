@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-import ucode.config_io as config_io
-from ucode.config_io import (
+import lucode.config_io as config_io
+from lucode.config_io import (
     backup_existing_file,
     deep_merge_dict,
     ensure_parent_dir,

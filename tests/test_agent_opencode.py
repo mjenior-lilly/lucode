@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
-from ucode.agents import opencode
+from lucode.agents import opencode
 
 WS = "https://example.databricks.com"
 
@@ -56,7 +56,7 @@ class TestOpencodeSpec:
     def test_display(self):
         assert opencode.SPEC["display"] == "OpenCode"
 
-    def test_config_path_is_under_ucode_xdg_home(self):
+    def test_config_path_is_under_lucode_xdg_home(self):
         assert opencode.SPEC["config_path"] == (
             opencode.OPENCODE_XDG_CONFIG_HOME / "opencode" / "opencode.json"
         )
@@ -160,22 +160,22 @@ class TestRenderOverlay:
     def test_user_agent_header_anthropic(self, monkeypatch):
         # UA must live at the per-model level — OpenCode clobbers
         # provider-level `headers["User-Agent"]` in session/llm.ts.
-        monkeypatch.setattr(opencode, "ucode_version", lambda: "0.1.0")
+        monkeypatch.setattr(opencode, "lucode_version", lambda: "0.1.0")
         monkeypatch.setattr(opencode, "agent_version", lambda binary: "0.74.0")
         models = {"anthropic": ["claude-sonnet"]}
         overlay, _ = opencode.render_overlay("claude-sonnet", "tok", _base_urls(), models)
         model_headers = overlay["provider"]["databricks-anthropic"]["models"]["claude-sonnet"][
             "headers"
         ]
-        assert model_headers["User-Agent"] == "ucode/0.1.0 opencode/0.74.0"
+        assert model_headers["User-Agent"] == "lucode/0.1.0 opencode/0.74.0"
 
     def test_user_agent_header_gemini(self, monkeypatch):
-        monkeypatch.setattr(opencode, "ucode_version", lambda: "0.1.0")
+        monkeypatch.setattr(opencode, "lucode_version", lambda: "0.1.0")
         monkeypatch.setattr(opencode, "agent_version", lambda binary: "0.74.0")
         models = {"gemini": ["gemini-2"]}
         overlay, _ = opencode.render_overlay("gemini-2", "tok", _base_urls(), models)
         model_headers = overlay["provider"]["databricks-google"]["models"]["gemini-2"]["headers"]
-        assert model_headers["User-Agent"] == "ucode/0.1.0 opencode/0.74.0"
+        assert model_headers["User-Agent"] == "lucode/0.1.0 opencode/0.74.0"
 
     def test_provider_level_headers_only_authorization(self, monkeypatch):
         # Sanity: provider-level headers should NOT include User-Agent (since
@@ -231,9 +231,9 @@ class TestRenderOverlay:
 
 
 class TestMcpServerConfig:
-    # ucode registers the `ucode mcp-proxy ...` bridge as a `local` (stdio) MCP
+    # lucode registers the `lucode mcp-proxy ...` bridge as a `local` (stdio) MCP
     # server; the proxy handles token refresh, so no URL/bearer header here.
-    PROXY_ARGV = ["ucode", "mcp-proxy", "--url", f"{WS}/api/2.0/mcp/functions/system/ai"]
+    PROXY_ARGV = ["lucode", "mcp-proxy", "--url", f"{WS}/api/2.0/mcp/functions/system/ai"]
 
     def test_builds_local_server_entry_from_proxy_argv(self):
         entry = opencode.build_mcp_server_entry(self.PROXY_ARGV)
@@ -245,8 +245,8 @@ class TestMcpServerConfig:
         }
 
     def test_writes_mcp_server_without_clobbering_existing_config(self, tmp_path, monkeypatch):
-        import ucode.agents.opencode as oc_mod
-        import ucode.config_io as config_io_mod
+        import lucode.agents.opencode as oc_mod
+        import lucode.config_io as config_io_mod
 
         monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
         config_file = tmp_path / "opencode.json"
@@ -277,8 +277,8 @@ class TestMcpServerConfig:
         }
 
     def test_reports_replaced_mcp_server(self, tmp_path, monkeypatch):
-        import ucode.agents.opencode as oc_mod
-        import ucode.config_io as config_io_mod
+        import lucode.agents.opencode as oc_mod
+        import lucode.config_io as config_io_mod
 
         monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
         config_file = tmp_path / "opencode.json"
@@ -295,7 +295,7 @@ class TestMcpServerConfig:
         assert written["mcp"]["github"]["command"] == self.PROXY_ARGV
 
     def test_removes_mcp_server_without_clobbering_others(self, tmp_path, monkeypatch):
-        import ucode.agents.opencode as oc_mod
+        import lucode.agents.opencode as oc_mod
 
         config_file = tmp_path / "opencode.json"
         monkeypatch.setattr(oc_mod, "OPENCODE_CONFIG_PATH", config_file)
@@ -327,7 +327,7 @@ class TestBuildRuntimeEnv:
 
         assert env["OAUTH_TOKEN"] == "tok"
 
-    def test_sets_ucode_xdg_config_home(self):
+    def test_sets_lucode_xdg_config_home(self):
         env = opencode.build_runtime_env("tok")
 
         assert env["XDG_CONFIG_HOME"] == str(opencode.OPENCODE_XDG_CONFIG_HOME)
@@ -380,8 +380,8 @@ class TestOpencodeValidateCmd:
 
 class TestWriteToolConfigStaleProviderCleanup:
     def test_stale_providers_removed_before_merge(self, tmp_path, monkeypatch):
-        import ucode.agents.opencode as oc_mod
-        import ucode.config_io as config_io_mod
+        import lucode.agents.opencode as oc_mod
+        import lucode.config_io as config_io_mod
 
         monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
         config_file = tmp_path / "opencode.json"
@@ -406,8 +406,8 @@ class TestWriteToolConfigStaleProviderCleanup:
         }
 
         with (
-            patch("ucode.agents.opencode.get_databricks_token", return_value="tok"),
-            patch("ucode.agents.opencode.save_state"),
+            patch("lucode.agents.opencode.get_databricks_token", return_value="tok"),
+            patch("lucode.agents.opencode.save_state"),
         ):
             oc_mod.write_tool_config(state, "claude-sonnet", token="tok")
 
@@ -419,8 +419,8 @@ class TestWriteToolConfigStaleProviderCleanup:
         assert providers.get("other-provider") == {"keep": True}
 
     def test_config_written_with_correct_model(self, tmp_path, monkeypatch):
-        import ucode.agents.opencode as oc_mod
-        import ucode.config_io as config_io_mod
+        import lucode.agents.opencode as oc_mod
+        import lucode.config_io as config_io_mod
 
         monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
         config_file = tmp_path / "opencode.json"
@@ -436,8 +436,8 @@ class TestWriteToolConfigStaleProviderCleanup:
         }
 
         with (
-            patch("ucode.agents.opencode.get_databricks_token", return_value="tok"),
-            patch("ucode.agents.opencode.save_state"),
+            patch("lucode.agents.opencode.get_databricks_token", return_value="tok"),
+            patch("lucode.agents.opencode.save_state"),
         ):
             oc_mod.write_tool_config(state, "claude-sonnet", token="tok")
 

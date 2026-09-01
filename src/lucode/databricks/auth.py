@@ -13,12 +13,12 @@ import subprocess
 from pathlib import Path
 from typing import Literal, overload
 
-from ucode.databricks.transport import (
+from lucode.databricks.transport import (
     debug,
     format_subprocess_result,
     log_auth_diagnostics,
 )
-from ucode.ui import (
+from lucode.ui import (
     print_kv,
     print_note,
     print_section,
@@ -253,9 +253,9 @@ def list_profile_entries() -> list[dict]:
     `databricks auth profiles`.
 
     Returns ``[]`` on any failure (CLI missing, timeout, non-zero exit, JSON
-    decode error). When ``UCODE_DEBUG=1`` each dropout path logs *why* the
+    decode error). When ``lucode_DEBUG=1`` each dropout path logs *why* the
     result was empty so a silently-disappearing workspace picker is
-    diagnosable from ``~/.ucode/debug.log``.
+    diagnosable from ``~/.lucode/debug.log``.
     """
     try:
         result = run(
@@ -329,7 +329,7 @@ def _read_databrickscfg_token(profile: str) -> str | None:
     section is pointed at a name that never appears in the file so a token in
     ``[DEFAULT]`` does not leak into every named profile."""
     cfg_path = Path(os.environ.get("DATABRICKS_CONFIG_FILE") or "~/.databrickscfg").expanduser()
-    parser = configparser.ConfigParser(default_section="@ucode-no-defaults@", interpolation=None)
+    parser = configparser.ConfigParser(default_section="@lucode-no-defaults@", interpolation=None)
     try:
         if not parser.read(cfg_path, encoding="utf-8"):
             return None
@@ -345,7 +345,7 @@ def resolve_pat_token(profile: str | None) -> str | None:
     """Return the static PAT of a PAT-type Databricks CLI profile, or None.
 
     Only consulted when the user explicitly opted in via
-    ``ucode configure --profiles <name> --use-pat`` — ucode never picks up a
+    ``lucode configure --profiles <name> --use-pat`` — lucode never picks up a
     PAT implicitly."""
     if profile and profile_auth_type(profile) == "pat":
         return _read_databrickscfg_token(profile)
@@ -533,26 +533,26 @@ def get_databricks_token(
     return token
 
 
-def _ucode_binary() -> str:
-    """Resolve the absolute path to the running `ucode` executable.
+def _lucode_binary() -> str:
+    """Resolve the absolute path to the running `lucode` executable.
 
     Agents persist the auth command into config files and re-run it on every
     token refresh, possibly from launchers without a full PATH (desktop GUIs).
     An absolute path keeps the helper working regardless of PATH. Falls back to
     the bare name when resolution fails."""
-    return shutil.which("ucode") or "ucode"
+    return shutil.which("lucode") or "lucode"
 
 
 def build_auth_token_argv(
     workspace: str, profile: str | None = None, *, use_pat: bool = False
 ) -> list[str]:
-    """Argv for the cross-platform token helper: `ucode auth-token ...`.
+    """Argv for the cross-platform token helper: `lucode auth-token ...`.
 
     Unlike the previous POSIX `databricks ... | jq` pipeline, this is a single
     executable with plain arguments — no `sh`, no `jq`, no shell quoting — so it
     runs identically on macOS, Linux, and Windows (issue #116). The DATABRICKS_BEARER
     short-circuit and the PAT path both live inside `auth-token` itself."""
-    argv = [_ucode_binary(), "auth-token", "--host", workspace.rstrip("/")]
+    argv = [_lucode_binary(), "auth-token", "--host", workspace.rstrip("/")]
     if profile:
         argv += ["--profile", profile]
     if use_pat:
@@ -563,17 +563,17 @@ def build_auth_token_argv(
 def build_mcp_proxy_argv(
     url: str, workspace: str, profile: str | None = None, *, use_pat: bool = False
 ) -> list[str]:
-    """Argv for the stdio MCP bridge: `ucode mcp-proxy --url ... --host ...`.
+    """Argv for the stdio MCP bridge: `lucode mcp-proxy --url ... --host ...`.
 
     Every coding agent registers this single command as a local stdio MCP
     server instead of a per-client HTTP endpoint with a bearer header. The proxy
     forwards to ``url`` and mints a fresh OAuth token on each upstream request,
     so tokens never expire mid-session — the client only ever spawns a process,
     which keeps registration uniform across CLIs that disagree on HTTP-auth
-    syntax. Like `build_auth_token_argv`, this resolves the absolute `ucode`
+    syntax. Like `build_auth_token_argv`, this resolves the absolute `lucode`
     path and passes plain arguments (no shell), so it runs identically on every
     platform."""
-    argv = [_ucode_binary(), "mcp-proxy", "--url", url, "--host", workspace.rstrip("/")]
+    argv = [_lucode_binary(), "mcp-proxy", "--url", url, "--host", workspace.rstrip("/")]
     if profile:
         argv += ["--profile", profile]
     if use_pat:
@@ -587,7 +587,7 @@ def build_auth_shell_command(
     """Single-line, shell-quoted form of :func:`build_auth_token_argv`.
 
     Used by the derived Pi state contract, which exposes the helper as one command
-    string. On every platform this resolves to the `ucode auth-token` executable
+    string. On every platform this resolves to the `lucode auth-token` executable
     rather than a POSIX shell pipeline, so no `sh`/`jq` is required."""
     argv = build_auth_token_argv(workspace, profile, use_pat=use_pat)
     if platform.system() == "Windows":

@@ -1,4 +1,4 @@
-"""Tests for the `ucode mcp-proxy` stdio<->streamable-HTTP bridge."""
+"""Tests for the `lucode mcp-proxy` stdio<->streamable-HTTP bridge."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import anyio
 import httpx
 import pytest
 
-from ucode import mcp_proxy
+from lucode import mcp_proxy
 
 WS = "https://example.databricks.com"
 URL = f"{WS}/api/2.0/mcp/functions/system/ai"

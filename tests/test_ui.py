@@ -10,7 +10,7 @@ from unittest.mock import patch
 import pytest
 from rich.console import Console
 
-from ucode.ui import (
+from lucode.ui import (
     format_duration,
     format_meter,
     format_token_count,
@@ -33,7 +33,7 @@ class TestPromptYesNoDefault:
                 raise EOFError
             return value
 
-        monkeypatch.setattr("ucode.ui.console.input", fake_input)
+        monkeypatch.setattr("lucode.ui.console.input", fake_input)
 
     def test_empty_takes_default_true(self, monkeypatch):
         self._answer(monkeypatch, "")
@@ -72,7 +72,7 @@ class TestDefaultsAreLabelledAsAcceptable:
     """A shown default must say that enter takes it, or it reads as a format example."""
 
     def test_text_default_says_enter_accepts_it(self):
-        with patch("ucode.ui.console.input", return_value="") as inp:
+        with patch("lucode.ui.console.input", return_value="") as inp:
             assert prompt_for_text("Policy name", default="tiered") == "tiered"
         rendered = _visible(inp.call_args[0][0])
         assert "[tiered]" in rendered
@@ -81,17 +81,17 @@ class TestDefaultsAreLabelledAsAcceptable:
     def test_a_word_like_default_is_not_eaten_as_markup(self):
         # Rich treats `[coding-agents-tiered-routing]` as a style tag and renders nothing for it, so
         # the real wizard default vanished from the prompt while `[80]` survived.
-        with patch("ucode.ui.console.input", return_value="") as inp:
+        with patch("lucode.ui.console.input", return_value="") as inp:
             prompt_for_text("Policy name", default="coding-agents-tiered-routing")
         assert "[coding-agents-tiered-routing]" in _visible(inp.call_args[0][0])
 
     def test_a_dotted_default_is_not_eaten_as_markup(self):
-        with patch("ucode.ui.console.input", return_value="") as inp:
+        with patch("lucode.ui.console.input", return_value="") as inp:
             prompt_for_text("Skills location", default="main.default")
         assert "[main.default]" in _visible(inp.call_args[0][0])
 
     def test_percentage_default_says_enter_accepts_it(self):
-        with patch("ucode.ui.console.input", return_value="") as inp:
+        with patch("lucode.ui.console.input", return_value="") as inp:
             assert prompt_for_percentage("at what percent?", default=0.8) == 0.8
         rendered = _visible(inp.call_args[0][0])
         # Prompted in percent even though the API takes a fraction.
@@ -99,12 +99,12 @@ class TestDefaultsAreLabelledAsAcceptable:
         assert "enter to accept" in rendered
 
     def test_no_default_shows_no_hint(self):
-        with patch("ucode.ui.console.input", return_value="typed") as inp:
+        with patch("lucode.ui.console.input", return_value="typed") as inp:
             assert prompt_for_text("Model") == "typed"
         assert "enter to accept" not in _visible(inp.call_args[0][0])
 
     def test_typing_still_overrides_the_default(self):
-        with patch("ucode.ui.console.input", return_value="mine"):
+        with patch("lucode.ui.console.input", return_value="mine"):
             assert prompt_for_text("Policy name", default="tiered") == "mine"
 
 
@@ -112,15 +112,15 @@ class TestClosedStdinAborts:
     """Ctrl-D must reach the CLI as an abort, not as a traceback."""
 
     def test_percentage_without_a_default_raises_keyboard_interrupt(self):
-        # `ucode setup`'s tier prompt passes no default. EOFError has no handler above this call —
+        # `lucode setup`'s tier prompt passes no default. EOFError has no handler above this call —
         # the setup command catches only RuntimeError and KeyboardInterrupt — so a bare EOFError
         # reached the admin as a raw traceback.
-        with patch("ucode.ui.console.input", side_effect=EOFError):
+        with patch("lucode.ui.console.input", side_effect=EOFError):
             with pytest.raises(KeyboardInterrupt):
                 prompt_for_percentage("Tier 1: activates at what percent of budget?")
 
     def test_percentage_with_a_default_still_takes_it(self):
-        with patch("ucode.ui.console.input", side_effect=EOFError):
+        with patch("lucode.ui.console.input", side_effect=EOFError):
             assert prompt_for_percentage("at what percent?", default=0.8) == 0.8
 
 
@@ -263,7 +263,7 @@ class TestPromptForWorkspace:
     PROFILES = [("https://a.databricks.com", "prof-a"), ("https://b.databricks.com", "prof-b")]
 
     def test_returns_selected_profile_tuple(self):
-        with patch("ucode.ui.questionary.select") as mock_select:
+        with patch("lucode.ui.questionary.select") as mock_select:
             mock_select.return_value.ask.return_value = (
                 "https://a.databricks.com",
                 "prof-a",
@@ -274,8 +274,8 @@ class TestPromptForWorkspace:
 
     def test_none_falls_through_to_manual_prompt(self):
         with (
-            patch("ucode.ui.questionary.select") as mock_select,
-            patch("ucode.ui.console.input", return_value="https://manual.databricks.com"),
+            patch("lucode.ui.questionary.select") as mock_select,
+            patch("lucode.ui.console.input", return_value="https://manual.databricks.com"),
         ):
             mock_select.return_value.ask.return_value = None
             url, profile = prompt_for_workspace("desc", profiles=self.PROFILES)
@@ -286,8 +286,8 @@ class TestPromptForWorkspace:
         # Regression: if questionary returns the choice title (e.g. "Enter a
         # different URL") instead of its value, we must not try to unpack it.
         with (
-            patch("ucode.ui.questionary.select") as mock_select,
-            patch("ucode.ui.console.input", return_value="https://manual.databricks.com"),
+            patch("lucode.ui.questionary.select") as mock_select,
+            patch("lucode.ui.console.input", return_value="https://manual.databricks.com"),
         ):
             mock_select.return_value.ask.return_value = "Enter a different URL"
             url, profile = prompt_for_workspace("desc", profiles=self.PROFILES)
@@ -295,7 +295,7 @@ class TestPromptForWorkspace:
         assert profile is None
 
     def test_no_profiles_goes_straight_to_manual_prompt(self):
-        with patch("ucode.ui.console.input", return_value="example.databricks.com"):
+        with patch("lucode.ui.console.input", return_value="example.databricks.com"):
             url, profile = prompt_for_workspace("desc", profiles=None)
         assert url == "https://example.databricks.com"
         assert profile is None

@@ -7,9 +7,9 @@ import signal
 import subprocess
 import threading
 
-from ucode.agent_models import opencode_default_model
-from ucode.agent_updates import available_npm_package_update
-from ucode.config_io import (
+from lucode.agent_models import opencode_default_model
+from lucode.agent_updates import available_npm_package_update
+from lucode.config_io import (
     APP_DIR,
     ToolSpec,
     backup_existing_file,
@@ -17,15 +17,15 @@ from ucode.config_io import (
     read_json_safe,
     write_json_file,
 )
-from ucode.databricks.auth import get_databricks_token
-from ucode.databricks.models import (
+from lucode.databricks.auth import get_databricks_token
+from lucode.databricks.models import (
     TOKEN_REFRESH_INTERVAL_SECONDS,
     build_opencode_base_urls,
     model_token_limits,
 )
-from ucode.state import mark_tool_managed, save_state
-from ucode.telemetry import agent_version, ucode_version
-from ucode.ui import print_warning
+from lucode.state import mark_tool_managed, save_state
+from lucode.telemetry import agent_version, lucode_version
+from lucode.ui import print_warning
 
 OPENCODE_XDG_CONFIG_HOME = APP_DIR / "opencode-xdg"
 OPENCODE_CONFIG_DIR = OPENCODE_XDG_CONFIG_HOME / "opencode"
@@ -98,7 +98,7 @@ def render_overlay(
     # `headers` are clobbered by that injection, but per-model `headers` are
     # merged AFTER and win — so the UA must live on each model entry.
     ua_header = {
-        "User-Agent": f"ucode/{ucode_version()} opencode/{agent_version('opencode')}",
+        "User-Agent": f"lucode/{lucode_version()} opencode/{agent_version('opencode')}",
     }
 
     anthropic_models = opencode_models.get("anthropic") or []
@@ -196,7 +196,7 @@ def write_tool_config(
 
 def build_mcp_server_entry(argv: list[str]) -> dict:
     # A `local` MCP server runs a command over stdio; `command` is the full
-    # argv. ucode registers the `ucode mcp-proxy ...` bridge here so OpenCode
+    # argv. lucode registers the `lucode mcp-proxy ...` bridge here so OpenCode
     # never speaks HTTP+bearer directly — the proxy mints fresh tokens itself.
     return {
         "type": "local",

@@ -1,13 +1,13 @@
-"""Persistent state for ucode (per-workspace, versioned)."""
+"""Persistent state for lucode (per-workspace, versioned)."""
 
 from __future__ import annotations
 
 import json
 
-from ucode.agent_models import pi_default_model
-from ucode.config_io import APP_DIR, is_dry_run
-from ucode.databricks.auth import build_auth_shell_command
-from ucode.databricks.models import build_shared_base_urls
+from lucode.agent_models import pi_default_model
+from lucode.config_io import APP_DIR, is_dry_run
+from lucode.databricks.auth import build_auth_shell_command
+from lucode.databricks.models import build_shared_base_urls
 
 STATE_PATH = APP_DIR / "state.json"
 STATE_VERSION = 3
@@ -139,7 +139,7 @@ def build_agent_state(state: dict) -> dict[str, dict]:
     """Build per-agent harness configuration for a workspace.
 
     The returned shape is intended for downstream tools that want to reuse
-    ucode's configured gateway URLs and auth command without duplicating
+    lucode's configured gateway URLs and auth command without duplicating
     endpoint construction logic.
 
     :param state: Hydrated workspace state containing ``workspace``,

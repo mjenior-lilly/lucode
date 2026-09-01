@@ -1,20 +1,20 @@
 """Admin-authored managed coding-agent config: model catalogs, validation, and serialization.
 
 This module owns the admin-write half of the managed config, mirroring the developer-read half in
-:mod:`ucode.managed_config`:
+:mod:`lucode.managed_config`:
 
 - which models an admin may pick for each agent (:func:`model_options_for_agent`),
 - validating a manifest before it is published (:func:`validate_manifest`),
-- serializing ucode's internal manifest shape into proto-JSON ``CodingAgentConfig``
+- serializing lucode's internal manifest shape into proto-JSON ``CodingAgentConfig``
   (:func:`serialize_managed_config`), and
-- persisting the authored manifest to ``~/.ucode/managed-settings.json``.
+- persisting the authored manifest to ``~/.lucode/managed-settings.json``.
 
-The manifest shape here is exactly the one :func:`ucode.managed_config.normalize_managed_config`
+The manifest shape here is exactly the one :func:`lucode.managed_config.normalize_managed_config`
 produces, so ``serialize`` then ``normalize`` round-trips to the input. The enum maps are derived by
 inverting that module's maps rather than restated, so a new agent or MCP type only has to be added
 once.
 
-``managed-settings.json`` (authored by an admin, published by ``ucode apply``) is distinct from
+``managed-settings.json`` (authored by an admin, published by ``lucode apply``) is distinct from
 ``managed-state.json`` (pulled from the workspace by a developer, owned by ``managed_config``).
 
 The interactive wizard that calls these helpers, and the publish step, live in later changes; this
@@ -29,16 +29,16 @@ import uuid
 from pathlib import Path
 from typing import cast
 
-import ucode.config_io as config_io
-from ucode.databricks.models import ANTHROPIC_FAMILIES
-from ucode.managed_config import (
+import lucode.config_io as config_io
+from lucode.databricks.models import ANTHROPIC_FAMILIES
+from lucode.managed_config import (
     AGENT_ENUM_TO_TOOL,
     MCP_TYPE_ENUM_TO_TAG,
 )
 
 MANAGED_SETTINGS_PATH = config_io.APP_DIR / "managed-settings.json"
 
-# ucode tool name -> CodingAgent proto enum, and ucode MCP type tag -> McpServerType proto enum.
+# lucode tool name -> CodingAgent proto enum, and lucode MCP type tag -> McpServerType proto enum.
 # Inverted from the read side's maps so the two directions cannot drift: adding an agent to
 # `managed_config._AGENT_ENUM_TO_TOOL` makes it serializable here automatically.
 AGENT_TOOL_TO_ENUM: dict[str, str] = {tool: enum for enum, tool in AGENT_ENUM_TO_TOOL.items()}
@@ -136,7 +136,7 @@ def _enabled_agent_payload(tool: str, agent_config: dict) -> dict:
 def _budget_policy_payload(budget_policy: dict) -> dict:
     """Build the ``BudgetPolicy`` body, dropping tiers that name an unknown agent.
 
-    ``spending_percentage`` is passed through as-is: it is a fraction in [0, 1] both in ucode's
+    ``spending_percentage`` is passed through as-is: it is a fraction in [0, 1] both in lucode's
     manifest and in the proto (the server validates that range). Callers prompting an admin in
     percent must divide before building the manifest.
     """
@@ -170,15 +170,15 @@ def _budget_policy_payload(budget_policy: dict) -> dict:
 
 
 def serialize_managed_config(manifest: dict) -> dict:
-    """Serialize ucode's internal manifest into a proto-JSON ``CodingAgentConfig``.
+    """Serialize lucode's internal manifest into a proto-JSON ``CodingAgentConfig``.
 
-    The exact inverse of :func:`ucode.managed_config.normalize_managed_config`: tool names become
+    The exact inverse of :func:`lucode.managed_config.normalize_managed_config`: tool names become
     ``CODING_AGENT_*`` enums, MCP type tags become ``MCP_SERVER_TYPE_*``, and each agent's model
     config is wrapped in its matching ``AgentModelConfig`` oneof variant. Agents and MCP types this
     build doesn't recognize are dropped, mirroring the read side.
 
     Output-only proto fields (``workspace_id``, timestamps, user ids) are never emitted. ``name`` is
-    carried through when present so an update path can address an existing resource; ``ucode apply``
+    carried through when present so an update path can address an existing resource; ``lucode apply``
     omits it on create and lets the server assign one.
     """
     payload: dict = {}
@@ -300,7 +300,7 @@ def validate_manifest(manifest: dict, state: dict | None = None) -> list[str]:
 
     - ``default_agent`` is required once any agent configuration is present, must appear in
       ``enabled_agents``, and that agent must have a non-empty ``default_model``;
-    - every ``enabled_agents`` key must be an agent this ucode build knows;
+    - every ``enabled_agents`` key must be an agent this lucode build knows;
     - each MCP server needs a name and a recognized type; skill names must be non-empty;
     - a ``budget_policy`` needs a ``budget_id``, and each tier needs a ``spending_percentage`` in
       [0, 1] (unique across tiers), a ``default_agent`` that appears in ``enabled_agents``, and a
@@ -469,9 +469,9 @@ def _validate_budget_policy(budget_policy: dict, enabled_agents: dict[str, dict]
 
 
 def save_managed_settings(workspace: str, manifest: dict) -> None:
-    """Persist the authored manifest to ``~/.ucode/managed-settings.json``. No-op in dry-run.
+    """Persist the authored manifest to ``~/.lucode/managed-settings.json``. No-op in dry-run.
 
-    Stored alongside its workspace so ``ucode apply`` can refuse to publish a manifest that was
+    Stored alongside its workspace so ``lucode apply`` can refuse to publish a manifest that was
     authored against a different workspace.
     """
     if config_io.is_dry_run():
@@ -502,7 +502,7 @@ def _restrict_permissions(path: Path) -> None:
 def load_managed_settings(workspace: str | None = None) -> dict | None:
     """Load the authored manifest, or None when absent (or authored for another workspace).
 
-    Passing ``workspace`` scopes the read the way :func:`ucode.managed_config.load_managed_state`
+    Passing ``workspace`` scopes the read the way :func:`lucode.managed_config.load_managed_state`
     does, so a manifest left over from a different workspace is ignored rather than published to the
     wrong place. Omit it to read whatever is on disk.
     """

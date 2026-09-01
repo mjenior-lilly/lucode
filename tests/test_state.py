@@ -7,8 +7,8 @@ from unittest.mock import patch
 
 import pytest
 
-import ucode.state as state_mod
-from ucode.state import (
+import lucode.state as state_mod
+from lucode.state import (
     STATE_VERSION,
     build_agent_state,
     clear_state,
@@ -40,7 +40,7 @@ def patch_state_path(tmp_path, monkeypatch):
     fake_state_path = tmp_path / "state.json"
     monkeypatch.setattr(state_mod, "STATE_PATH", fake_state_path)
 
-    import ucode.config_io as config_io_mod
+    import lucode.config_io as config_io_mod
 
     monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
 
@@ -48,7 +48,7 @@ def patch_state_path(tmp_path, monkeypatch):
 @pytest.fixture(autouse=True)
 def patch_build_urls():
     """Avoid real network calls from hydrate_state."""
-    with patch("ucode.state.build_shared_base_urls", return_value=FAKE_URLS):
+    with patch("lucode.state.build_shared_base_urls", return_value=FAKE_URLS):
         yield
 
 
@@ -140,7 +140,7 @@ class TestSaveLoadRoundTrip:
         assert persisted["agents"]["pi"]["model"] == "system.ai.claude-opus-4-8"
 
     def test_save_respects_dry_run(self):
-        import ucode.config_io as config_io_mod
+        import lucode.config_io as config_io_mod
 
         config_io_mod.set_dry_run(True)
         try:
@@ -240,7 +240,7 @@ class TestBuildAgentState:
         assert result == {}
 
     def test_pi_model_is_derived_from_state_not_settings_file(self, tmp_path, monkeypatch):
-        from ucode.agents import pi
+        from lucode.agents import pi
 
         settings = tmp_path / "settings.json"
         settings.write_text('{"defaultModel": "stale"}')
@@ -263,7 +263,7 @@ class TestBuildAgentState:
                 "base_urls": FAKE_URLS,
             }
         )
-        # --use-pat threads through to the `ucode auth-token --use-pat` helper,
+        # --use-pat threads through to the `lucode auth-token --use-pat` helper,
         # which resolves the static PAT internally on every platform.
         assert "--use-pat" in result["pi"]["auth_command"]
         assert "--profile DEFAULT" in result["pi"]["auth_command"]

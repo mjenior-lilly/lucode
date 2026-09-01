@@ -1,18 +1,18 @@
-"""Tests for ucode.telemetry."""
+"""Tests for lucode.telemetry."""
 
 from __future__ import annotations
 
 import subprocess
 from unittest.mock import patch
 
-from ucode import telemetry
+from lucode import telemetry
 
 
-class TestUcodeVersion:
+class TestlucodeVersion:
     def test_returns_string(self):
         # Either a real version like "0.1.0" or "unknown" — both are strings.
-        assert isinstance(telemetry.ucode_version(), str)
-        assert telemetry.ucode_version() != ""
+        assert isinstance(telemetry.lucode_version(), str)
+        assert telemetry.lucode_version() != ""
 
 
 class TestAgentVersion:

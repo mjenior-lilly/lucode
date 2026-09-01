@@ -11,8 +11,8 @@ from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import cast
 from urllib.parse import urlencode
 
-from ucode.databricks.auth import _profile_args, build_databricks_cli_env, run
-from ucode.databricks.transport import http_get_json, workspace_hostname
+from lucode.databricks.auth import _profile_args, build_databricks_cli_env, run
+from lucode.databricks.transport import http_get_json, workspace_hostname
 
 
 def _extract_connection_page(payload: object) -> tuple[list[dict], str | None]:

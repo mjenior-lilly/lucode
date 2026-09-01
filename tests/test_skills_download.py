@@ -5,8 +5,8 @@ from __future__ import annotations
 
 import pytest
 
-import ucode.skills_download as sd
-from ucode.skills_download import skill_dir_roots, write_skill
+import lucode.skills_download as sd
+from lucode.skills_download import skill_dir_roots, write_skill
 
 WS = "https://example.databricks.com"
 

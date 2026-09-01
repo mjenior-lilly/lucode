@@ -1,4 +1,4 @@
-"""Pi coding agent: writes the isolated ~/.ucode/pi-home/.pi/agent/models.json.
+"""Pi coding agent: writes the isolated ~/.lucode/pi-home/.pi/agent/models.json.
 
 Pi (https://pi.dev) is a multi-provider coding agent. Workspace discovery can
 render three native-API providers in its `models.json`:
@@ -19,7 +19,7 @@ API-specific `compat` flags align Pi's requests with the gateway routes:
 - MLflow uses `max_tokens`, a `system` prompt role, and omits unsupported or
   undocumented OpenAI Chat Completions fields.
 
-Additional compat keys may be set manually in models.json; ucode preserves
+Additional compat keys may be set manually in models.json; lucode preserves
 them across token refreshes and config rewrites. Provider model lists are also
 preserved as user-defined configuration; workspace discovery never adds model
 entries. OSS and foundation entries require the correct per-model output caps.
@@ -35,9 +35,9 @@ import signal
 import subprocess
 import threading
 
-from ucode.agent_models import pi_default_model
-from ucode.agent_updates import available_npm_package_update
-from ucode.config_io import (
+from lucode.agent_models import pi_default_model
+from lucode.agent_updates import available_npm_package_update
+from lucode.config_io import (
     APP_DIR,
     ToolSpec,
     backup_existing_file,
@@ -45,19 +45,19 @@ from ucode.config_io import (
     read_json_safe,
     write_json_file,
 )
-from ucode.databricks.auth import get_databricks_token
-from ucode.databricks.models import (
+from lucode.databricks.auth import get_databricks_token
+from lucode.databricks.models import (
     ANTHROPIC_FAMILIES,
     TOKEN_REFRESH_INTERVAL_SECONDS,
     build_pi_base_urls,
     classify_model_family,
 )
-from ucode.state import mark_tool_managed, save_state
-from ucode.telemetry import agent_version, ucode_version
-from ucode.ui import print_warning
+from lucode.state import mark_tool_managed, save_state
+from lucode.telemetry import agent_version, lucode_version
+from lucode.ui import print_warning
 
-PI_UCODE_HOME = APP_DIR / "pi-home"
-PI_CONFIG_DIR = PI_UCODE_HOME / ".pi" / "agent"
+PI_lucode_HOME = APP_DIR / "pi-home"
+PI_CONFIG_DIR = PI_lucode_HOME / ".pi" / "agent"
 PI_CONFIG_PATH = PI_CONFIG_DIR / "models.json"
 PI_SETTINGS_PATH = PI_CONFIG_DIR / "settings.json"
 PI_BACKUP_PATH = APP_DIR / "pi-models.backup.json"
@@ -83,7 +83,7 @@ TOKEN_PROVIDER_NAMES = (*PROVIDER_NAMES, "databricks-mlflow")
 
 PROVIDER_KEYS: list[list[str]] = [["providers", name] for name in PROVIDER_NAMES]
 
-# Old provider names earlier ucode versions wrote; cleaned up on each write so
+# Old provider names earlier lucode versions wrote; cleaned up on each write so
 # users don't end up with stale entries pointing at routes that 400.
 LEGACY_PROVIDER_NAMES = ("databricks-anthropic", "databricks-codex", "databricks-oss")
 
@@ -121,7 +121,7 @@ def render_overlay(
     existing_config: dict | None = None,
     managed_provider_models: dict[str, list[str]] | None = None,
 ) -> tuple[dict, list[list[str]]]:
-    """Return the isolated Pi models overlay and ucode-owned key paths.
+    """Return the isolated Pi models overlay and lucode-owned key paths.
 
     Discovery preserves user-maintained model arrays. An explicit managed
     policy replaces those arrays with the exact servable policy inventory.
@@ -130,7 +130,7 @@ def render_overlay(
     keys: list[list[str]] = [["model"]]
     # Pi expands header values that match an env var name. Our UA contains
     # `/` and a space so it can never collide — safe to pass as a literal.
-    ua_headers = {"User-Agent": f"ucode/{ucode_version()} pi/{agent_version('pi')}"}
+    ua_headers = {"User-Agent": f"lucode/{lucode_version()} pi/{agent_version('pi')}"}
 
     existing_providers = (existing_config or {}).get("providers") or {}
 
@@ -359,7 +359,7 @@ def _refresh_forever(state: dict, stop_event: threading.Event) -> None:
 def build_runtime_env(token: str) -> dict[str, str]:
     env = os.environ.copy()
     env["OAUTH_TOKEN"] = token
-    env["HOME"] = str(PI_UCODE_HOME)
+    env["HOME"] = str(PI_lucode_HOME)
     return env
 
 

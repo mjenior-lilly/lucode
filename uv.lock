@@ -1140,7 +1140,7 @@ wheels = [
 ]
 
 [[package]]
-name = "ucode"
+name = "lucode"
 source = { editable = "." }
 dependencies = [
     { name = "anyio" },

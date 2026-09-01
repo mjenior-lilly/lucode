@@ -11,7 +11,7 @@ from urllib import request as urllib_request
 
 from databricks.sql.exc import ServerOperationError
 
-from ucode.databricks.transport import workspace_hostname
+from lucode.databricks.transport import workspace_hostname
 
 
 class SqlWarehouse(NamedTuple):

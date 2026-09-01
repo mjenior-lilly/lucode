@@ -1,7 +1,7 @@
 """End-to-end integration tests that require a live Databricks workspace.
 
 Run with:
-    UCODE_TEST_WORKSPACE=https://your-workspace.databricks.com uv run pytest tests/test_e2e.py -v
+    lucode_TEST_WORKSPACE=https://your-workspace.databricks.com uv run pytest tests/test_e2e.py -v
 
 All tests in this file are skipped automatically when the env var is not set.
 The agent-launch tests are also skipped per-agent/model when the binary is not
@@ -22,25 +22,25 @@ from urllib import request as urllib_request
 
 import pytest
 
-from ucode.databricks.auth import has_valid_databricks_auth
-from ucode.databricks.models import (
+from lucode.databricks.auth import has_valid_databricks_auth
+from lucode.databricks.models import (
     build_shared_base_urls,
     build_tool_base_url,
     ensure_ai_gateway_v2,
 )
-from ucode.databricks.sql import discover_sql_warehouses
-from ucode.databricks.transport import workspace_hostname
-from ucode.ui import normalize_workspace_url
+from lucode.databricks.sql import discover_sql_warehouses
+from lucode.databricks.transport import workspace_hostname
+from lucode.ui import normalize_workspace_url
 
 
 def _ws() -> str:
-    raw = os.environ.get("UCODE_TEST_WORKSPACE", "").strip().rstrip("/")
+    raw = os.environ.get("lucode_TEST_WORKSPACE", "").strip().rstrip("/")
     return normalize_workspace_url(raw) if raw else ""
 
 
 def _skip_if_no_workspace():
     if not _ws():
-        pytest.skip("Set UCODE_TEST_WORKSPACE=https://... to run E2E tests")
+        pytest.skip("Set lucode_TEST_WORKSPACE=https://... to run E2E tests")
 
 
 def _run_agent(
@@ -57,7 +57,7 @@ def _codex_home_outside_tmp() -> Path:
     pytest's ``tmp_path`` lives under ``/tmp``; codex (>=0.134) refuses to create its helper
     binaries when ``CODEX_HOME`` is under a temporary dir, so launching codex from ``tmp_path``
     fails before doing anything. Rooting CODEX_HOME under ``$HOME`` sidesteps that guard."""
-    home = Path(tempfile.mkdtemp(prefix=".ucode-e2e-codex-", dir=Path.home()))
+    home = Path(tempfile.mkdtemp(prefix=".lucode-e2e-codex-", dir=Path.home()))
     atexit.register(shutil.rmtree, home, ignore_errors=True)
     return home
 
@@ -115,7 +115,7 @@ class TestAiGatewayV2:
 
 class TestModelDiscovery:
     def test_discovers_model_families(self, e2e_workspace, e2e_token):
-        from ucode.databricks.models import discover_model_services
+        from lucode.databricks.models import discover_model_services
 
         anthropic, openai, gemini, oss, reason = discover_model_services(e2e_workspace, e2e_token)
         if not any((anthropic, openai, gemini, oss)):
@@ -135,9 +135,9 @@ class TestStateRoundTrip:
     def test_configure_shared_state_and_reload(
         self, tmp_path, monkeypatch, e2e_state, e2e_workspace
     ):
-        import ucode.config_io as config_io_mod
-        import ucode.state as state_mod
-        from ucode.state import load_state, save_state
+        import lucode.config_io as config_io_mod
+        import lucode.state as state_mod
+        from lucode.state import load_state, save_state
 
         monkeypatch.setattr(state_mod, "STATE_PATH", tmp_path / "state.json")
         monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
@@ -184,8 +184,8 @@ class TestOpencodeLaunch:
     def test_launch_opencode_per_model(
         self, tmp_path, monkeypatch, e2e_state, e2e_workspace, e2e_token
     ):
-        import ucode.config_io as config_io_mod
-        from ucode.agents import opencode
+        import lucode.config_io as config_io_mod
+        from lucode.agents import opencode
 
         _require_binary("opencode")
         models = self._all_models(e2e_state)
@@ -207,9 +207,9 @@ class TestOpencodeLaunch:
             if config_path.exists():
                 config_path.unlink()
             with pytest.MonkeyPatch().context() as mp:
-                mp.setattr("ucode.state.save_state", lambda s: None)
+                mp.setattr("lucode.state.save_state", lambda s: None)
                 mp.setattr(
-                    "ucode.agents.opencode.get_databricks_token",
+                    "lucode.agents.opencode.get_databricks_token",
                     lambda ws, profile=None, **kwargs: e2e_token,
                 )
                 opencode.write_tool_config(
@@ -263,8 +263,8 @@ class TestPiLaunch:
         return out
 
     def test_launch_pi_per_model(self, tmp_path, monkeypatch, e2e_state, e2e_workspace, e2e_token):
-        import ucode.config_io as config_io_mod
-        from ucode.agents import pi
+        import lucode.config_io as config_io_mod
+        from lucode.agents import pi
 
         _require_binary("pi")
         models = self._all_models(e2e_state)
@@ -275,7 +275,7 @@ class TestPiLaunch:
         pi_dir = pi_home / ".pi" / "agent"
         config_path = pi_dir / "models.json"
         backup_path = tmp_path / "pi-models.backup.json"
-        monkeypatch.setattr(pi, "PI_UCODE_HOME", pi_home)
+        monkeypatch.setattr(pi, "PI_lucode_HOME", pi_home)
         monkeypatch.setattr(pi, "PI_CONFIG_PATH", config_path)
         monkeypatch.setattr(pi, "PI_BACKUP_PATH", backup_path)
         failures = []
@@ -283,9 +283,9 @@ class TestPiLaunch:
             if config_path.exists():
                 config_path.unlink()
             with pytest.MonkeyPatch().context() as mp:
-                mp.setattr("ucode.state.save_state", lambda s: None)
+                mp.setattr("lucode.state.save_state", lambda s: None)
                 mp.setattr(
-                    "ucode.agents.pi.get_databricks_token",
+                    "lucode.agents.pi.get_databricks_token",
                     lambda ws, profile=None, **kwargs: e2e_token,
                 )
                 pi.write_tool_config(

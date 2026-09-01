@@ -6,8 +6,8 @@ import subprocess
 
 import pytest
 
-import ucode.agents as agents_mod
-from ucode.agents import (
+import lucode.agents as agents_mod
+from lucode.agents import (
     TOOL_SPECS,
     check_gateway_endpoint,
     configure_selected_tools,
@@ -226,7 +226,7 @@ class TestResolveLaunchModel:
 
 class TestInstallToolBinary:
     def test_non_strict_returns_false_when_npm_missing(self, monkeypatch):
-        monkeypatch.setattr("ucode.agents.shutil.which", lambda _: None)
+        monkeypatch.setattr("lucode.agents.shutil.which", lambda _: None)
 
         assert install_tool_binary("opencode", strict=False) is False
 
@@ -239,8 +239,8 @@ class TestInstallToolBinary:
         def fake_run(*args, **kwargs):
             raise subprocess.CalledProcessError(1, args[0])
 
-        monkeypatch.setattr("ucode.agents.shutil.which", fake_which)
-        monkeypatch.setattr("ucode.agents.subprocess.run", fake_run)
+        monkeypatch.setattr("lucode.agents.shutil.which", fake_which)
+        monkeypatch.setattr("lucode.agents.subprocess.run", fake_run)
 
         assert install_tool_binary("opencode", strict=False) is False
 
@@ -254,9 +254,9 @@ class TestInstallToolBinary:
             calls.append(args)
             return subprocess.CompletedProcess(args, 0)
 
-        monkeypatch.setattr("ucode.agents.shutil.which", fake_which)
-        monkeypatch.setattr("ucode.agents.subprocess.run", fake_run)
-        monkeypatch.setattr("ucode.agents._confirm_update_installed_tool_binary", lambda _: True)
+        monkeypatch.setattr("lucode.agents.shutil.which", fake_which)
+        monkeypatch.setattr("lucode.agents.subprocess.run", fake_run)
+        monkeypatch.setattr("lucode.agents._confirm_update_installed_tool_binary", lambda _: True)
 
         assert install_tool_binary("opencode", strict=False, update_existing=True) is True
         assert calls == [["npm", "install", "-g", "opencode-ai"]]
@@ -275,11 +275,11 @@ class TestInstallToolBinary:
             calls.append(args)
             return subprocess.CompletedProcess(args, 0)
 
-        monkeypatch.setattr("ucode.agents.shutil.which", fake_which)
-        monkeypatch.setattr("ucode.agents.subprocess.run", fake_run)
-        monkeypatch.setattr("ucode.agents.opencode.is_update_available", lambda: None)
+        monkeypatch.setattr("lucode.agents.shutil.which", fake_which)
+        monkeypatch.setattr("lucode.agents.subprocess.run", fake_run)
+        monkeypatch.setattr("lucode.agents.opencode.is_update_available", lambda: None)
         monkeypatch.setattr(
-            "ucode.agents.prompt_yes_no", lambda prompt: prompt_calls.append(prompt) or True
+            "lucode.agents.prompt_yes_no", lambda prompt: prompt_calls.append(prompt) or True
         )
 
         assert install_tool_binary("opencode", strict=False, update_existing=True) is True
@@ -300,11 +300,11 @@ class TestInstallToolBinary:
             calls.append(args)
             return subprocess.CompletedProcess(args, 0)
 
-        monkeypatch.setattr("ucode.agents.shutil.which", fake_which)
-        monkeypatch.setattr("ucode.agents.subprocess.run", fake_run)
-        monkeypatch.setattr("ucode.agents.opencode.is_update_available", lambda: ("1.2.3", "1.2.4"))
+        monkeypatch.setattr("lucode.agents.shutil.which", fake_which)
+        monkeypatch.setattr("lucode.agents.subprocess.run", fake_run)
+        monkeypatch.setattr("lucode.agents.opencode.is_update_available", lambda: ("1.2.3", "1.2.4"))
         monkeypatch.setattr(
-            "ucode.agents.prompt_yes_no", lambda prompt: prompt_calls.append(prompt) or True
+            "lucode.agents.prompt_yes_no", lambda prompt: prompt_calls.append(prompt) or True
         )
 
         assert install_tool_binary("opencode", strict=False, update_existing=True) is True
@@ -322,9 +322,9 @@ class TestInstallToolBinary:
             calls.append(args)
             return subprocess.CompletedProcess(args, 0)
 
-        monkeypatch.setattr("ucode.agents.shutil.which", fake_which)
-        monkeypatch.setattr("ucode.agents.subprocess.run", fake_run)
-        monkeypatch.setattr("ucode.agents._confirm_update_installed_tool_binary", lambda _: False)
+        monkeypatch.setattr("lucode.agents.shutil.which", fake_which)
+        monkeypatch.setattr("lucode.agents.subprocess.run", fake_run)
+        monkeypatch.setattr("lucode.agents._confirm_update_installed_tool_binary", lambda _: False)
 
         assert install_tool_binary("opencode", strict=False, update_existing=True) is True
         assert calls == []
@@ -336,14 +336,14 @@ class TestInstallToolBinary:
         def fake_which(binary: str) -> str | None:
             return f"/usr/bin/{binary}"
 
-        monkeypatch.setattr("ucode.agents.shutil.which", fake_which)
-        monkeypatch.setattr("ucode.agents._minimum_version_error", lambda _: None)
-        monkeypatch.setattr("ucode.agents._required_update_message", lambda _: None)
+        monkeypatch.setattr("lucode.agents.shutil.which", fake_which)
+        monkeypatch.setattr("lucode.agents._minimum_version_error", lambda _: None)
+        monkeypatch.setattr("lucode.agents._required_update_message", lambda _: None)
 
         def boom(_tool: str) -> bool:
             raise AssertionError("optional update prompt should not be reached")
 
-        monkeypatch.setattr("ucode.agents._confirm_update_installed_tool_binary", boom)
+        monkeypatch.setattr("lucode.agents._confirm_update_installed_tool_binary", boom)
 
         assert (
             install_tool_binary(
@@ -362,14 +362,14 @@ class TestInstallToolBinary:
         def fake_run(*args, **kwargs):
             raise subprocess.CalledProcessError(1, args[0])
 
-        monkeypatch.setattr("ucode.agents.shutil.which", fake_which)
-        monkeypatch.setattr("ucode.agents.subprocess.run", fake_run)
-        monkeypatch.setattr("ucode.agents._confirm_update_installed_tool_binary", lambda _: True)
+        monkeypatch.setattr("lucode.agents.shutil.which", fake_which)
+        monkeypatch.setattr("lucode.agents.subprocess.run", fake_run)
+        monkeypatch.setattr("lucode.agents._confirm_update_installed_tool_binary", lambda _: True)
 
         assert install_tool_binary("opencode", strict=True, update_existing=True) is True
 
     def test_ensure_tool_binary_available_raises_when_missing(self, monkeypatch):
-        monkeypatch.setattr("ucode.agents.shutil.which", lambda _: None)
+        monkeypatch.setattr("lucode.agents.shutil.which", lambda _: None)
 
         with pytest.raises(RuntimeError, match="OpenCode is not installed"):
             ensure_tool_binary_available("opencode")
@@ -377,8 +377,8 @@ class TestInstallToolBinary:
 
 class TestConfigureSelectedTools:
     def test_merges_with_existing_available_tools(self, monkeypatch):
-        monkeypatch.setattr("ucode.agents.configure_tool", lambda tool, state, model=None: state)
-        monkeypatch.setattr("ucode.agents.save_state", lambda s: None)
+        monkeypatch.setattr("lucode.agents.configure_tool", lambda tool, state, model=None: state)
+        monkeypatch.setattr("lucode.agents.save_state", lambda s: None)
 
         state = {
             "workspace": "https://x.databricks.com",
@@ -389,8 +389,8 @@ class TestConfigureSelectedTools:
         assert set(result["available_tools"]) == {"opencode", "pi"}
 
     def test_empty_selection_preserves_existing(self, monkeypatch):
-        monkeypatch.setattr("ucode.agents.configure_tool", lambda tool, state, model=None: state)
-        monkeypatch.setattr("ucode.agents.save_state", lambda s: None)
+        monkeypatch.setattr("lucode.agents.configure_tool", lambda tool, state, model=None: state)
+        monkeypatch.setattr("lucode.agents.save_state", lambda s: None)
 
         state = {"workspace": "https://x.databricks.com", "available_tools": ["opencode"]}
         result = configure_selected_tools(state, [])
@@ -408,7 +408,7 @@ class TestValidateAllToolsVerbosity:
         return capsys.readouterr().out
 
     def test_normal_verbosity_renders_panels(self, monkeypatch, capsys):
-        import ucode.ui as ui_mod
+        import lucode.ui as ui_mod
 
         monkeypatch.setattr(ui_mod, "_verbosity", "normal")
         out = self._run(monkeypatch, capsys)
@@ -417,7 +417,7 @@ class TestValidateAllToolsVerbosity:
         assert "OpenCode is working" in out
 
     def test_low_verbosity_omits_panels(self, monkeypatch, capsys):
-        import ucode.ui as ui_mod
+        import lucode.ui as ui_mod
 
         monkeypatch.setattr(ui_mod, "_verbosity", "low")
         out = self._run(monkeypatch, capsys)
@@ -437,7 +437,7 @@ class TestValidateTool:
             captured["kwargs"] = kwargs
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-        monkeypatch.setattr("ucode.agents.subprocess.run", fake_run)
+        monkeypatch.setattr("lucode.agents.subprocess.run", fake_run)
         monkeypatch.setattr(agents_mod, "load_state", lambda: {})
 
         ok, err = agents_mod.validate_tool("opencode")
@@ -450,7 +450,7 @@ class TestValidateTool:
         def fake_run(cmd, **kwargs):
             raise subprocess.TimeoutExpired(cmd, 60)
 
-        monkeypatch.setattr("ucode.agents.subprocess.run", fake_run)
+        monkeypatch.setattr("lucode.agents.subprocess.run", fake_run)
         monkeypatch.setattr(agents_mod, "load_state", lambda: {})
 
         ok, err = agents_mod.validate_tool("opencode")

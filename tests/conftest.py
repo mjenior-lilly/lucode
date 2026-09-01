@@ -6,28 +6,28 @@ import os
 
 import pytest
 
-from ucode.databricks.auth import get_databricks_token
-from ucode.databricks.models import (
+from lucode.databricks.auth import get_databricks_token
+from lucode.databricks.models import (
     build_shared_base_urls,
     discover_codex_models,
     discover_gemini_models,
     discover_model_services,
 )
-from ucode.ui import normalize_workspace_url
+from lucode.ui import normalize_workspace_url
 
 
 @pytest.fixture(autouse=True)
-def _isolate_ucode_state(tmp_path, monkeypatch):
-    """Redirect ucode's state file and APP_DIR to a per-test tmp dir.
+def _isolate_lucode_state(tmp_path, monkeypatch):
+    """Redirect lucode's state file and APP_DIR to a per-test tmp dir.
 
     Defense in depth: even if an individual test forgets to patch save_state,
-    it can never touch the developer's real ~/.ucode/state.json.
+    it can never touch the developer's real ~/.lucode/state.json.
     """
-    import ucode.config_io as config_io_mod
-    import ucode.databricks.models as databricks_models
-    import ucode.state as state_mod
+    import lucode.config_io as config_io_mod
+    import lucode.databricks.models as databricks_models
+    import lucode.state as state_mod
 
-    state_dir = tmp_path / ".ucode"
+    state_dir = tmp_path / ".lucode"
     state_dir.mkdir()
     monkeypatch.setattr(state_mod, "STATE_PATH", state_dir / "state.json")
     monkeypatch.setattr(config_io_mod, "APP_DIR", state_dir)
@@ -37,7 +37,7 @@ def _isolate_ucode_state(tmp_path, monkeypatch):
 
 
 def _workspace() -> str:
-    ws = os.environ.get("UCODE_TEST_WORKSPACE", "").strip().rstrip("/")
+    ws = os.environ.get("lucode_TEST_WORKSPACE", "").strip().rstrip("/")
     return normalize_workspace_url(ws) if ws else ""
 
 
@@ -45,7 +45,7 @@ def _workspace() -> str:
 def e2e_workspace():
     ws = _workspace()
     if not ws:
-        pytest.skip("Set UCODE_TEST_WORKSPACE=https://... to run E2E tests")
+        pytest.skip("Set lucode_TEST_WORKSPACE=https://... to run E2E tests")
     return ws
 
 

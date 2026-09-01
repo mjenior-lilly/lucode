@@ -6,8 +6,8 @@ from unittest.mock import patch
 
 import pytest
 
-import ucode.databricks.models as db_mod
-from ucode.databricks.models import (
+import lucode.databricks.models as db_mod
+from lucode.databricks.models import (
     AI_GATEWAY_V2_DOCS_URL,
     build_opencode_base_urls,
     build_tool_base_url,
@@ -349,8 +349,8 @@ class TestEnsureAiGatewayV2:
     def test_raises_on_404(self):
 
         exc = self._http_error(404, "Not Found")
-        with patch("ucode.databricks.transport.urllib_request.urlopen", side_effect=exc):
-            from ucode.databricks.models import ensure_ai_gateway_v2
+        with patch("lucode.databricks.transport.urllib_request.urlopen", side_effect=exc):
+            from lucode.databricks.models import ensure_ai_gateway_v2
 
             with pytest.raises(RuntimeError, match=AI_GATEWAY_V2_DOCS_URL) as excinfo:
                 ensure_ai_gateway_v2(WS, "fake-token")
@@ -359,8 +359,8 @@ class TestEnsureAiGatewayV2:
     def test_raises_on_401_with_auth_hint(self):
 
         exc = self._http_error(401, "Unauthorized")
-        with patch("ucode.databricks.transport.urllib_request.urlopen", side_effect=exc):
-            from ucode.databricks.models import ensure_ai_gateway_v2
+        with patch("lucode.databricks.transport.urllib_request.urlopen", side_effect=exc):
+            from lucode.databricks.models import ensure_ai_gateway_v2
 
             with pytest.raises(RuntimeError, match="401") as excinfo:
                 ensure_ai_gateway_v2(WS, "fake-token")
@@ -372,8 +372,8 @@ class TestEnsureAiGatewayV2:
         """400 + body `Invalid Token` is the misleading-error case from issue #84."""
 
         exc = self._http_error(400, "Bad Request", body="Invalid Token")
-        with patch("ucode.databricks.transport.urllib_request.urlopen", side_effect=exc):
-            from ucode.databricks.models import ensure_ai_gateway_v2
+        with patch("lucode.databricks.transport.urllib_request.urlopen", side_effect=exc):
+            from lucode.databricks.models import ensure_ai_gateway_v2
 
             with pytest.raises(RuntimeError) as excinfo:
                 ensure_ai_gateway_v2(WS, "fake-token")
@@ -389,8 +389,8 @@ class TestEnsureAiGatewayV2:
         """A 400 that is *not* an auth failure should still surface the body."""
 
         exc = self._http_error(400, "Bad Request", body="some other detail")
-        with patch("ucode.databricks.transport.urllib_request.urlopen", side_effect=exc):
-            from ucode.databricks.models import ensure_ai_gateway_v2
+        with patch("lucode.databricks.transport.urllib_request.urlopen", side_effect=exc):
+            from lucode.databricks.models import ensure_ai_gateway_v2
 
             with pytest.raises(RuntimeError, match=AI_GATEWAY_V2_DOCS_URL) as excinfo:
                 ensure_ai_gateway_v2(WS, "fake-token")
@@ -400,10 +400,10 @@ class TestEnsureAiGatewayV2:
         from urllib.error import URLError
 
         with patch(
-            "ucode.databricks.transport.urllib_request.urlopen",
+            "lucode.databricks.transport.urllib_request.urlopen",
             side_effect=URLError("connection refused"),
         ):
-            from ucode.databricks.models import ensure_ai_gateway_v2
+            from lucode.databricks.models import ensure_ai_gateway_v2
 
             with pytest.raises(RuntimeError, match=AI_GATEWAY_V2_DOCS_URL):
                 ensure_ai_gateway_v2(WS, "fake-token")
@@ -411,10 +411,10 @@ class TestEnsureAiGatewayV2:
     def test_succeeds_with_endpoints_list(self):
 
         with patch(
-            "ucode.databricks.transport.urllib_request.urlopen",
+            "lucode.databricks.transport.urllib_request.urlopen",
             return_value=self._mock_json_response('{"endpoints": [{"name": "foo"}]}'),
         ):
-            from ucode.databricks.models import ensure_ai_gateway_v2
+            from lucode.databricks.models import ensure_ai_gateway_v2
 
             ensure_ai_gateway_v2(WS, "fake-token")  # should not raise
 
@@ -423,10 +423,10 @@ class TestEnsureAiGatewayV2:
         # A 200 with no endpoints still means v2 is wired up on this workspace —
         # downstream discovery will surface "no models" with a clearer reason.
         with patch(
-            "ucode.databricks.transport.urllib_request.urlopen",
+            "lucode.databricks.transport.urllib_request.urlopen",
             return_value=self._mock_json_response('{"endpoints": []}'),
         ):
-            from ucode.databricks.models import ensure_ai_gateway_v2
+            from lucode.databricks.models import ensure_ai_gateway_v2
 
             ensure_ai_gateway_v2(WS, "fake-token")
 
@@ -455,7 +455,7 @@ class TestClassifyModelFamily:
 
 class TestModelServicesCache:
     """A successful listing is memoized per workspace: several callers want different views of the
-    same paginated walk (bucketed families vs the raw Claude ids), so one `ucode setup` run would
+    same paginated walk (bucketed families vs the raw Claude ids), so one `lucode setup` run would
     otherwise page the whole catalog twice."""
 
     @staticmethod

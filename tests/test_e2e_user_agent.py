@@ -1,4 +1,4 @@
-"""End-to-end test that the User-Agent header ucode injects actually reaches the wire.
+"""End-to-end test that the User-Agent header lucode injects actually reaches the wire.
 
 We don't talk to a real Databricks workspace here — instead we stand up a
 tiny HTTP capture server on localhost, point each agent's *_BASE_URL at it,
@@ -6,7 +6,7 @@ launch the agent, and assert on the User-Agent the server saw.
 
 The server returns a canned error so the agent itself fails; we don't care
 about the agent's exit code, only the headers that arrived before it bailed.
-This is the cheapest way to verify "ucode wired the UA into the request"
+This is the cheapest way to verify "lucode wired the UA into the request"
 end-to-end without TLS, real models, or workspace credentials.
 
 Skipped per-agent when the binary isn't installed.
@@ -23,7 +23,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
-from ucode.telemetry import agent_version, ucode_version
+from lucode.telemetry import agent_version, lucode_version
 
 
 def _require_binary(binary: str):
@@ -75,7 +75,7 @@ class _CaptureServer:
                     )
                 )
                 body = json.dumps(
-                    {"error": {"type": "invalid_api_key", "message": "ucode test capture"}}
+                    {"error": {"type": "invalid_api_key", "message": "lucode test capture"}}
                 ).encode()
                 self.send_response(401)
                 self.send_header("Content-Type", "application/json")
@@ -121,7 +121,7 @@ def capture_server():
 
 
 def _expected_ua(agent_name: str, binary: str) -> str:
-    return f"ucode/{ucode_version()} {agent_name}/{agent_version(binary)}"
+    return f"lucode/{lucode_version()} {agent_name}/{agent_version(binary)}"
 
 
 def _assert_ua(req: _CapturedRequest, expected: str) -> None:
@@ -154,8 +154,8 @@ def _no_request_msg(server: _CaptureServer, result: subprocess.CompletedProcess 
 
 class TestOpencodeUserAgent:
     def test_user_agent_arrives_at_gateway(self, tmp_path, monkeypatch, capture_server):
-        import ucode.config_io as config_io_mod
-        from ucode.agents import opencode
+        import lucode.config_io as config_io_mod
+        from lucode.agents import opencode
 
         _require_binary("opencode")
         xdg = tmp_path / "xdg"
@@ -176,9 +176,9 @@ class TestOpencodeUserAgent:
             },
         }
         with pytest.MonkeyPatch().context() as mp:
-            mp.setattr("ucode.state.save_state", lambda s: None)
+            mp.setattr("lucode.state.save_state", lambda s: None)
             mp.setattr(
-                "ucode.agents.opencode.get_databricks_token",
+                "lucode.agents.opencode.get_databricks_token",
                 lambda ws, profile=None, **kwargs: "test-token",
             )
             opencode.write_tool_config(state, "test-claude-model", token="test-token")
@@ -189,21 +189,21 @@ class TestOpencodeUserAgent:
         ua = req.headers.get("User-Agent") or req.headers.get("user-agent") or ""
         expected_prefix = _expected_ua("opencode", "opencode")
         assert ua.startswith(expected_prefix), (
-            f"OpenCode UA missing ucode prefix.\n  got:    {ua!r}\n  prefix: {expected_prefix!r}"
+            f"OpenCode UA missing lucode prefix.\n  got:    {ua!r}\n  prefix: {expected_prefix!r}"
         )
 
 
 class TestPiUserAgent:
     def test_user_agent_arrives_at_gateway(self, tmp_path, monkeypatch, capture_server):
-        import ucode.config_io as config_io_mod
-        from ucode.agents import pi
+        import lucode.config_io as config_io_mod
+        from lucode.agents import pi
 
         _require_binary("pi")
         pi_home = tmp_path / "pi-home"
         pi_dir = pi_home / ".pi" / "agent"
         config_path = pi_dir / "models.json"
         monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
-        monkeypatch.setattr(pi, "PI_UCODE_HOME", pi_home)
+        monkeypatch.setattr(pi, "PI_lucode_HOME", pi_home)
         monkeypatch.setattr(pi, "PI_CONFIG_DIR", pi_dir)
         monkeypatch.setattr(pi, "PI_CONFIG_PATH", config_path)
         monkeypatch.setattr(pi, "PI_SETTINGS_PATH", pi_dir / "settings.json")
@@ -223,9 +223,9 @@ class TestPiUserAgent:
             },
         }
         with pytest.MonkeyPatch().context() as mp:
-            mp.setattr("ucode.state.save_state", lambda s: None)
+            mp.setattr("lucode.state.save_state", lambda s: None)
             mp.setattr(
-                "ucode.agents.pi.get_databricks_token",
+                "lucode.agents.pi.get_databricks_token",
                 lambda ws, profile=None, **kwargs: "test-token",
             )
             pi.write_tool_config(state, "test-claude-model", token="test-token")

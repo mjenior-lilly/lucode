@@ -8,8 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
-import ucode.databricks.transport as db_mod
-from ucode.databricks.transport import (
+import lucode.databricks.transport as db_mod
+from lucode.databricks.transport import (
     _scrub_databrickscfg,
     _scrub_json,
     format_subprocess_result,
@@ -54,7 +54,7 @@ class TestWorkspaceHostname:
 class TestHttpGetJsonReason:
     """The `reason` string returned by `http_get_json` must include the response body
     so callers (e.g. ensure_ai_gateway_v2) can route on it. Before issue #84's fix
-    the body was logged only when UCODE_DEBUG=1 and dropped from the bubbled error."""
+    the body was logged only when lucode_DEBUG=1 and dropped from the bubbled error."""
 
     @staticmethod
     def _http_error(code: int, msg: str, body: str = ""):
@@ -68,7 +68,7 @@ class TestHttpGetJsonReason:
     def test_reason_includes_body_on_http_error(self):
 
         exc = self._http_error(400, "Bad Request", body="Invalid Token")
-        with patch("ucode.databricks.transport.urllib_request.urlopen", side_effect=exc):
+        with patch("lucode.databricks.transport.urllib_request.urlopen", side_effect=exc):
             payload, reason = http_get_json("https://x/y", "tok")
         assert payload is None
         assert "HTTP 400" in reason
@@ -77,7 +77,7 @@ class TestHttpGetJsonReason:
     def test_reason_without_body_is_status_only(self):
 
         exc = self._http_error(404, "Not Found")
-        with patch("ucode.databricks.transport.urllib_request.urlopen", side_effect=exc):
+        with patch("lucode.databricks.transport.urllib_request.urlopen", side_effect=exc):
             payload, reason = http_get_json("https://x/y", "tok")
         assert payload is None
         assert reason == "HTTP 404 Not Found"

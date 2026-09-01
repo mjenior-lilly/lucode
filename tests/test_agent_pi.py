@@ -6,7 +6,7 @@ import json
 from contextlib import nullcontext
 from unittest.mock import patch
 
-from ucode.agents import pi
+from lucode.agents import pi
 
 WS = "https://example.databricks.com"
 
@@ -85,7 +85,7 @@ class TestPiSpec:
     def test_config_path_under_pi_agent_dir(self):
         assert pi.SPEC["config_path"].name == "models.json"
         assert pi.SPEC["config_path"].parent.name == "agent"
-        assert pi.PI_UCODE_HOME in pi.SPEC["config_path"].parents
+        assert pi.PI_lucode_HOME in pi.SPEC["config_path"].parents
 
 
 class TestRenderOverlayProviders:
@@ -127,7 +127,7 @@ class TestRenderOverlayProviders:
 
 class TestRenderOverlayUserAgent:
     def test_user_agent_set_on_all_three_providers(self, monkeypatch):
-        monkeypatch.setattr(pi, "ucode_version", lambda: "0.1.0")
+        monkeypatch.setattr(pi, "lucode_version", lambda: "0.1.0")
         monkeypatch.setattr(pi, "agent_version", lambda binary: "0.74.0")
         overlay, _ = _overlay(
             "claude-sonnet",
@@ -135,7 +135,7 @@ class TestRenderOverlayUserAgent:
             codex_models=["gpt-5"],
             gemini_models=["gemini-2"],
         )
-        expected = "ucode/0.1.0 pi/0.74.0"
+        expected = "lucode/0.1.0 pi/0.74.0"
         for name in ("databricks-claude", "databricks-openai", "databricks-gemini"):
             assert overlay["providers"][name]["headers"]["User-Agent"] == expected
 
@@ -302,9 +302,9 @@ class TestBuildRuntimeEnv:
         env = pi.build_runtime_env("tok")
         assert env["OAUTH_TOKEN"] == "tok"
 
-    def test_sets_ucode_home(self):
+    def test_sets_lucode_home(self):
         env = pi.build_runtime_env("tok")
-        assert env["HOME"] == str(pi.PI_UCODE_HOME)
+        assert env["HOME"] == str(pi.PI_lucode_HOME)
 
 
 class TestPiValidateCmd:
@@ -324,8 +324,8 @@ class TestPiValidateCmd:
 
 class TestWriteToolConfig:
     def _setup(self, tmp_path, monkeypatch):
-        import ucode.agents.pi as pi_mod
-        import ucode.config_io as config_io_mod
+        import lucode.agents.pi as pi_mod
+        import lucode.config_io as config_io_mod
 
         monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
         config_file = tmp_path / "models.json"
@@ -364,8 +364,8 @@ class TestWriteToolConfig:
         config_file.write_text(json.dumps(stale), encoding="utf-8")
 
         with (
-            patch("ucode.agents.pi.get_databricks_token", return_value="tok"),
-            patch("ucode.agents.pi.save_state"),
+            patch("lucode.agents.pi.get_databricks_token", return_value="tok"),
+            patch("lucode.agents.pi.save_state"),
         ):
             pi_mod.write_tool_config(self._state(), "claude-sonnet", token="tok")
 
@@ -376,7 +376,7 @@ class TestWriteToolConfig:
         assert providers.get("user-provider") == {"keep": True}
 
     def test_legacy_providers_removed_on_upgrade(self, tmp_path, monkeypatch):
-        """Earlier ucode versions wrote `databricks-anthropic`, `databricks-codex`,
+        """Earlier lucode versions wrote `databricks-anthropic`, `databricks-codex`,
         and `databricks-oss` providers. They must be stripped on the next write
         so users don't end up with stale entries pointing at routes that 400."""
         pi_mod, config_file, _, _ = self._setup(tmp_path, monkeypatch)
@@ -395,8 +395,8 @@ class TestWriteToolConfig:
         )
 
         with (
-            patch("ucode.agents.pi.get_databricks_token", return_value="tok"),
-            patch("ucode.agents.pi.save_state"),
+            patch("lucode.agents.pi.get_databricks_token", return_value="tok"),
+            patch("lucode.agents.pi.save_state"),
         ):
             pi_mod.write_tool_config(self._state(), "claude-sonnet", token="tok")
 
@@ -426,7 +426,7 @@ class TestWriteToolConfig:
             encoding="utf-8",
         )
         state = self._state(pi_models=["system.ai.claude-sonnet-4-5", "system.ai.gpt-5"])
-        with patch("ucode.agents.pi.save_state"):
+        with patch("lucode.agents.pi.save_state"):
             pi_mod.write_tool_config(state, "system.ai.gpt-5", token="tok")
 
         providers = json.loads(config_file.read_text())["providers"]
@@ -440,8 +440,8 @@ class TestWriteToolConfig:
         pi_mod, config_file, _, _ = self._setup(tmp_path, monkeypatch)
 
         with (
-            patch("ucode.agents.pi.get_databricks_token", return_value="tok"),
-            patch("ucode.agents.pi.save_state"),
+            patch("lucode.agents.pi.get_databricks_token", return_value="tok"),
+            patch("lucode.agents.pi.save_state"),
         ):
             pi_mod.write_tool_config(self._state(), "claude-sonnet", token="tok")
 
@@ -456,8 +456,8 @@ class TestWriteToolConfig:
         pi_mod, _, settings_file, _ = self._setup(tmp_path, monkeypatch)
 
         with (
-            patch("ucode.agents.pi.get_databricks_token", return_value="tok"),
-            patch("ucode.agents.pi.save_state"),
+            patch("lucode.agents.pi.get_databricks_token", return_value="tok"),
+            patch("lucode.agents.pi.save_state"),
         ):
             pi_mod.write_tool_config(self._state(), "claude-sonnet", token="tok")
 
@@ -473,13 +473,13 @@ class TestWriteToolConfig:
         settings_file.write_text(original, encoding="utf-8")
 
         with (
-            patch("ucode.agents.pi.get_databricks_token", return_value="tok"),
-            patch("ucode.agents.pi.save_state"),
+            patch("lucode.agents.pi.get_databricks_token", return_value="tok"),
+            patch("lucode.agents.pi.save_state"),
         ):
             pi_mod.write_tool_config(self._state(), "claude-sonnet", token="tok")
 
         assert settings_backup_file.read_text(encoding="utf-8") == original
-        # The on-disk settings still get the ucode pin applied via deep_merge.
+        # The on-disk settings still get the lucode pin applied via deep_merge.
         merged = json.loads(settings_file.read_text())
         assert merged["defaultProvider"] == "databricks-claude"
         assert merged["theme"] == "Default Dark"
@@ -487,8 +487,8 @@ class TestWriteToolConfig:
 
 class TestValidateAllToolsPiRollback:
     def test_failed_pi_validation_rolls_back_settings(self, tmp_path, monkeypatch):
-        import ucode.agents as agents_mod
-        import ucode.agents.pi as pi_mod
+        import lucode.agents as agents_mod
+        import lucode.agents.pi as pi_mod
 
         settings_file = tmp_path / "settings.json"
         settings_file.write_text("{}", encoding="utf-8")

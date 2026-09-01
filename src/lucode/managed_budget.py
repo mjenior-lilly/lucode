@@ -1,7 +1,7 @@
 """Render the workspace budget a managed coding-agent config is spending against.
 
 The figures come from the AI Gateway's ``:recommendModel`` response (``current_spend`` and
-``effective_threshold``), normalized by :func:`ucode.managed_config.get_model_recommendation`.
+``effective_threshold``), normalized by :func:`lucode.managed_config.get_model_recommendation`.
 Enforcement is entirely server-side — the gateway rejects over-budget requests — so this module
 only reports spend and never blocks a launch.
 """

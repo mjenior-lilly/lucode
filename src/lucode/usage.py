@@ -11,16 +11,16 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import cast
 
-from ucode.agents import TOOL_SPECS
-from ucode.databricks.auth import (
+from lucode.agents import TOOL_SPECS
+from lucode.databricks.auth import (
     apply_pat_environment,
     ensure_databricks_auth,
     get_databricks_token,
 )
-from ucode.databricks.managed import resolve_current_budget_spend
-from ucode.databricks.sql import SqlWarehouse, discover_sql_warehouses, run_usage_query
-from ucode.state import load_state
-from ucode.ui import (
+from lucode.databricks.managed import resolve_current_budget_spend
+from lucode.databricks.sql import SqlWarehouse, discover_sql_warehouses, run_usage_query
+from lucode.state import load_state
+from lucode.ui import (
     console,
     format_duration,
     format_meter,
@@ -508,7 +508,7 @@ def usage(warehouse_id: str | None = None) -> int:
     state = load_state()
     workspace = state.get("workspace")
     if not workspace:
-        raise RuntimeError("Workspace is not configured. Run `ucode configure` first.")
+        raise RuntimeError("Workspace is not configured. Run `lucode configure` first.")
 
     profile = state.get("profile")
     apply_pat_environment(state)
@@ -547,7 +547,7 @@ def usage(warehouse_id: str | None = None) -> int:
     table_widths = [8, 5, 10, 8, 8, 24]
 
     if not configured_tools:
-        print_note("No coding agents configured. Run `ucode configure` to set up agents.")
+        print_note("No coding agents configured. Run `lucode configure` to set up agents.")
         return 0
 
     for tool in configured_tools:

@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import cast
 from urllib.parse import urlencode
 
-from ucode.databricks.transport import debug, http_get_json, workspace_hostname
+from lucode.databricks.transport import debug, http_get_json, workspace_hostname
 
 AI_GATEWAY_V2_DOCS_URL = "https://docs.databricks.com/aws/en/ai-gateway/overview-beta"
 TOKEN_REFRESH_INTERVAL_SECONDS = 1800
@@ -22,7 +22,7 @@ _MODEL_SERVICE_REQUIRED_PREFIX = "system.ai."
 # support a new family.
 _OSS_MODEL_FAMILIES = ("kimi-", "glm-")
 
-# Claude model families ucode buckets, newest tier first. Add an entry to
+# Claude model families lucode buckets, newest tier first. Add an entry to
 # support a new family in both discovery paths (`claude-<family>-*` via the
 # model-services listing and `databricks-claude-<family>-*` via the AI Gateway).
 # Fable is deliberately excluded: neither surviving harness supports it.
@@ -30,7 +30,7 @@ ANTHROPIC_FAMILIES = ("opus", "sonnet", "haiku")
 
 
 def classify_model_family(model_id: str) -> str | None:
-    """Bucket a model FQN into the family ucode keys its state by, or None if unrecognized.
+    """Bucket a model FQN into the family lucode keys its state by, or None if unrecognized.
 
     Mirrors how discovery buckets a model-services listing (see `discover_model_services`), so a
     model named in a managed config lands in the same bucket it would have from discovery. Returns
@@ -119,7 +119,7 @@ def _get_model_services_page(
 
 # Successful model-service listings for this process, keyed by workspace. The listing is a paginated
 # walk of the whole metastore catalog, and several callers want different views of the same result,
-# so a single `ucode setup` run would otherwise page it twice. Cached per process, not persisted: a
+# so a single `lucode setup` run would otherwise page it twice. Cached per process, not persisted: a
 # long-lived process is not a thing here, and a new model appearing mid-command is not worth a
 # second walk. Failures are never cached, so a transient error still retries.
 _MODEL_SERVICES_CACHE: dict[str, list[str]] = {}

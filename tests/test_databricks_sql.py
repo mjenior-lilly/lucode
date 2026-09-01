@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-import ucode.databricks.sql as db_mod
-from ucode.databricks.sql import (
+import lucode.databricks.sql as db_mod
+from lucode.databricks.sql import (
     discover_sql_warehouses,
 )
 

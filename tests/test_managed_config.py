@@ -7,9 +7,9 @@ import stat
 
 import pytest
 
-import ucode.databricks.managed as db_mod
-import ucode.managed_config as mc_mod
-from ucode.managed_config import (
+import lucode.databricks.managed as db_mod
+import lucode.managed_config as mc_mod
+from lucode.managed_config import (
     get_managed_config,
     load_managed_state,
     normalize_managed_config,
@@ -53,7 +53,7 @@ RAW_MANIFEST = {
         {"name": "some-space-id", "type": "MCP_SERVER_TYPE_GENIE"},
     ],
     "skills": {"names": ["system.ai.pdf-extraction"]},
-    "tracing": {"table": "main.default.ucode_traces"},
+    "tracing": {"table": "main.default.lucode_traces"},
     "budget_policy": {
         "display_name": "paved-path",
         "budget_id": "c6563b45-df9a-4b19-afb2-d42dc2b52576",
@@ -172,7 +172,7 @@ class TestGetManagedConfig:
 class TestPersistence:
     @pytest.fixture(autouse=True)
     def _managed_path(self, tmp_path, monkeypatch):
-        path = tmp_path / ".ucode" / "managed-state.json"
+        path = tmp_path / ".lucode" / "managed-state.json"
         monkeypatch.setattr(mc_mod, "MANAGED_STATE_PATH", path)
         return path
 
@@ -265,7 +265,7 @@ def _state(**overrides) -> dict:
 
 
 class TestRefreshManagedConfig:
-    """The per-launch re-read, so an admin's edits land without re-running `ucode configure`."""
+    """The per-launch re-read, so an admin's edits land without re-running `lucode configure`."""
 
     @pytest.fixture(autouse=True)
     def _stub_token(self, monkeypatch):

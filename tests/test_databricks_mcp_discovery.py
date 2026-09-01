@@ -9,8 +9,8 @@ import time
 
 import pytest
 
-import ucode.databricks.mcp_discovery as db_mod
-from ucode.databricks.mcp_discovery import (
+import lucode.databricks.mcp_discovery as db_mod
+from lucode.databricks.mcp_discovery import (
     build_skills_mcp_url,
     list_databricks_apps,
     list_databricks_connections,

@@ -8,8 +8,8 @@ from urllib.parse import parse_qs
 
 import pytest
 
-import ucode.databricks.managed as db_mod
-from ucode.databricks.managed import (
+import lucode.databricks.managed as db_mod
+from lucode.databricks.managed import (
     CODING_AGENT_RECOMMEND_MODEL_PATH,
     resolve_current_budget_spend,
 )
@@ -131,17 +131,17 @@ class TestCodingAgentConfigCrudClients:
 
     def test_update_mask_never_names_a_field_the_server_rejects(self):
         # The server's mutable set is the upper bound; `budget_id` is in it but deprecated and
-        # rejected on write, so ucode must not name it. `default_options`/`tiers` are the legacy
-        # model-only shape ucode never authors.
+        # rejected on write, so lucode must not name it. `default_options`/`tiers` are the legacy
+        # model-only shape lucode never authors.
         assert "budget_id" not in db_mod.MANAGED_CONFIG_UPDATE_MASK_PATHS
         assert "default_options" not in db_mod.MANAGED_CONFIG_UPDATE_MASK_PATHS
         assert "tiers" not in db_mod.MANAGED_CONFIG_UPDATE_MASK_PATHS
 
     def test_update_mask_covers_every_field_the_manifest_can_set(self):
-        # A path ucode omits is a field a re-run silently cannot clear, since the server merges per
+        # A path lucode omits is a field a re-run silently cannot clear, since the server merges per
         # path. Derive the expectation from the serializer rather than restating it, so adding a
         # manifest field fails here instead of shipping a mask that can't clear it.
-        from ucode.managed_setup import serialize_managed_config
+        from lucode.managed_setup import serialize_managed_config
 
         emitted = set(
             serialize_managed_config(

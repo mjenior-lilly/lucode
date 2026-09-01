@@ -7,8 +7,8 @@ import subprocess
 
 import pytest
 
-import ucode.databricks.auth as db_mod
-from ucode.databricks.auth import (
+import lucode.databricks.auth as db_mod
+from lucode.databricks.auth import (
     _parse_databricks_cli_version,
     _run_databricks_cli_installer,
     build_auth_shell_command,
@@ -125,9 +125,9 @@ class TestApplyPatEnvironment:
 class TestBuildAuthTokenArgv:
     def test_basic_argv(self):
         argv = build_auth_token_argv(WS)
-        # First element resolves to the ucode executable; the rest is the
+        # First element resolves to the lucode executable; the rest is the
         # cross-platform helper invocation — no `sh`, no `jq`, no shell syntax.
-        assert argv[0].endswith("ucode") or argv[0] == "ucode"
+        assert argv[0].endswith("lucode") or argv[0] == "lucode"
         assert argv[1:] == ["auth-token", "--host", WS]
 
     def test_strips_trailing_slash_from_host(self):
@@ -158,8 +158,8 @@ class TestBuildAuthShellCommand:
         cmd = build_auth_shell_command(WS)
         assert WS in cmd
 
-    def test_is_ucode_auth_token_invocation(self):
-        # The persisted helper now points at the `ucode auth-token` executable
+    def test_is_lucode_auth_token_invocation(self):
+        # The persisted helper now points at the `lucode auth-token` executable
         # on every platform — not a POSIX `databricks ... | jq` pipeline.
         cmd = build_auth_shell_command(WS)
         assert "auth-token" in cmd
@@ -385,7 +385,7 @@ class TestEnsureDatabricksCliVersion:
         ensure_databricks_cli_version()
 
     def test_auto_upgrades_when_version_too_old(self, tmp_path, monkeypatch):
-        import ucode.databricks.auth as db_mod
+        import lucode.databricks.auth as db_mod
 
         env = self._fake_databricks(tmp_path, "Databricks CLI v0.299.2")
         monkeypatch.setattr("os.environ", env)

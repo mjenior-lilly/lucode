@@ -1,10 +1,10 @@
-"""`ucode mcp-proxy`: a stdio MCP server that bridges to a Databricks
+"""`lucode mcp-proxy`: a stdio MCP server that bridges to a Databricks
 streamable-HTTP MCP endpoint, injecting an OAuth or explicitly activated PAT bearer.
 
-Every coding agent ucode configures points its Databricks MCP servers at this
-one command (``ucode mcp-proxy --url <endpoint> --profile <profile>``) as a
+Every coding agent lucode configures points its Databricks MCP servers at this
+one command (``lucode mcp-proxy --url <endpoint> --profile <profile>``) as a
 local **stdio** server. The agent spawns and reaps the proxy as a child process
-— ucode owns no long-lived process and no background refresh thread. The proxy
+— lucode owns no long-lived process and no background refresh thread. The proxy
 speaks stdio to the agent and streamable-HTTP to Databricks. An ``httpx.Auth``
 hook uses the normal token path on every upstream request, refreshing OAuth as
 needed or reusing the PAT exported once before preflight.
@@ -33,7 +33,7 @@ from anyio.streams.memory import MemoryObjectReceiveStream, MemoryObjectSendStre
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.server.stdio import stdio_server
 
-from ucode.databricks.auth import ensure_pat_bearer, get_databricks_token
+from lucode.databricks.auth import ensure_pat_bearer, get_databricks_token
 
 # Exit code used when the proxy cannot authenticate. MCP clients surface a
 # non-zero exit far more usefully than a startup timeout, so bail out with this
@@ -54,7 +54,7 @@ def _fail_fast(message: str) -> None:
 
     stdout is the MCP wire, so diagnostics must go to stderr — MCP clients
     surface a child's stderr when it fails to start."""
-    print(f"ucode mcp-proxy: {message}", file=sys.stderr, flush=True)
+    print(f"lucode mcp-proxy: {message}", file=sys.stderr, flush=True)
     raise SystemExit(AUTH_FAILURE_EXIT_CODE)
 
 
@@ -70,7 +70,7 @@ class _DatabricksTokenAuth(httpx.Auth):
 
     def auth_flow(self, request: httpx.Request):
         # get_databricks_token honors the DATABRICKS_BEARER short-circuit and PAT
-        # profiles internally; --use-pat is surfaced via the env ucode already set.
+        # profiles internally; --use-pat is surfaced via the env lucode already set.
         # A RuntimeError here means auth is dead (expired refresh token, logged-out
         # profile). Raising it from inside httpx's auth_flow would tear through the
         # transport's task group and stall the process until the client times out,

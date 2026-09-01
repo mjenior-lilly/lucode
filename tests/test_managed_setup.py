@@ -12,14 +12,14 @@ import stat
 
 import pytest
 
-import ucode.config_io as config_io_mod
-import ucode.managed_setup as managed_setup_mod
-from ucode.managed_config import (
+import lucode.config_io as config_io_mod
+import lucode.managed_setup as managed_setup_mod
+from lucode.managed_config import (
     AGENT_ENUM_TO_TOOL,
     MCP_TYPE_ENUM_TO_TAG,
     normalize_managed_config,
 )
-from ucode.managed_setup import (
+from lucode.managed_setup import (
     AGENT_TOOL_TO_ENUM,
     MCP_TAG_TO_TYPE_ENUM,
     load_managed_settings,
@@ -124,7 +124,7 @@ class TestEnumMaps:
 
 
 class TestRoundTrip:
-    """serialize -> normalize must be the identity on a ucode-native manifest."""
+    """serialize -> normalize must be the identity on a lucode-native manifest."""
 
     def test_full_manifest_round_trips(self):
         manifest = _full_manifest()

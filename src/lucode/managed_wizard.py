@@ -1,13 +1,13 @@
-"""Interactive `ucode setup`: author the workspace's managed coding-agent config.
+"""Interactive `lucode setup`: author the workspace's managed coding-agent config.
 
 Workspace admins run this to build the ``CodingAgentConfig`` their developers will pull. It walks
 the admin through agents, per-agent models, MCP servers, skills, and a spend-routing budget policy,
-then writes the manifest to ``~/.ucode/managed-settings.json``. Publishing it to the workspace is
-``ucode apply`` (a separate command, so an admin can review the file first).
+then writes the manifest to ``~/.lucode/managed-settings.json``. Publishing it to the workspace is
+``lucode apply`` (a separate command, so an admin can review the file first).
 
-Serialization, validation, and the per-agent model catalogs live in :mod:`ucode.managed_setup`; this
+Serialization, validation, and the per-agent model catalogs live in :mod:`lucode.managed_setup`; this
 module is the interaction layer on top of them. Sub-flows an admin already knows — MCP, skills — are
-delegated to the existing ``ucode configure <thing>`` commands and their results read back out of
+delegated to the existing ``lucode configure <thing>`` commands and their results read back out of
 ``state.json``, so there is exactly one picker per concern in the codebase.
 """
 
@@ -18,32 +18,32 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
-from ucode.agents import TOOL_SPECS, check_gateway_endpoint
-from ucode.config_io import is_dry_run
-from ucode.databricks.auth import ensure_databricks_auth, get_databricks_token
-from ucode.databricks.managed import (
+from lucode.agents import TOOL_SPECS, check_gateway_endpoint
+from lucode.config_io import is_dry_run
+from lucode.databricks.auth import ensure_databricks_auth, get_databricks_token
+from lucode.databricks.managed import (
     create_coding_agent_config,
     delete_coding_agent_config,
     is_workspace_admin,
     list_workspace_budgets,
     update_coding_agent_config,
 )
-from ucode.managed_config import get_managed_config
-from ucode.managed_setup import (
+from lucode.managed_config import get_managed_config
+from lucode.managed_setup import (
     load_managed_settings,
     model_options_for_agent,
     save_managed_settings,
     serialize_managed_config,
     validate_manifest,
 )
-from ucode.mcp import (
+from lucode.mcp import (
     SKILLS_MCP_KIND,
     _skill_mcp_locations,
     configure_mcp_command,
     configure_skills_mcp_command,
 )
-from ucode.state import load_state
-from ucode.ui import (
+from lucode.state import load_state
+from lucode.ui import (
     console,
     kv_line,
     print_err,
@@ -82,7 +82,7 @@ def _mcp_type_for_url(url: str) -> str | None:
     """Classify a registered MCP server's URL into a managed-config type tag.
 
     ``state.json`` stores each MCP server's resolved URL but not its type, while the managed config
-    stores ``{name, type}`` and lets the developer's ucode rebuild the URL. The URL shape is the only
+    stores ``{name, type}`` and lets the developer's lucode rebuild the URL. The URL shape is the only
     signal available, so map it back. Returns None for a URL that matches nothing known, so unknown
     servers are skipped rather than published with a guessed type.
     """
@@ -262,7 +262,7 @@ def _prompt_budget_policy(
     if reason is not None or not budgets:
         print_warning(
             "No AI Gateway budgets are visible for this workspace, so there is nothing to attach a "
-            "policy to. Create a budget in the Databricks console first, then re-run `ucode setup`."
+            "policy to. Create a budget in the Databricks console first, then re-run `lucode setup`."
         )
         return None
 
@@ -392,12 +392,12 @@ def _require_admin(workspace: str, token: str) -> None:
         admin = is_workspace_admin(workspace, token)
     if admin is False:
         raise RuntimeError(
-            f"You are not an admin of {workspace}. `ucode setup` authors the workspace-wide "
+            f"You are not an admin of {workspace}. `lucode setup` authors the workspace-wide "
             "coding config, so it is restricted to workspace admins."
         )
     if admin is None:
         print_warning(
-            "Could not verify workspace admin permissions. Continuing — `ucode apply` will fail "
+            "Could not verify workspace admin permissions. Continuing — `lucode apply` will fail "
             "if you lack them."
         )
     else:
@@ -413,7 +413,7 @@ def _handle_existing_config(workspace: str, token: str) -> bool:
 
     Deliberately doesn't itemize what the existing config holds. The admin doesn't need an inventory
     to act on this — the instruction is the same either way ("include everything you want to keep")
-    — and `ucode setup show` prints the real thing for anyone who wants to compare.
+    — and `lucode setup show` prints the real thing for anyone who wants to compare.
     """
     with spinner("Checking for an existing managed config..."):
         existing, reason = get_managed_config(workspace, token)
@@ -448,17 +448,17 @@ def _delete_existing_config(workspace: str, token: str, existing: dict) -> None:
     """Delete the workspace's published config after confirming. Raises RuntimeError on failure.
 
     Deleting leaves the workspace with no managed config, so every developer falls back to their own
-    settings on their next ucode run — confirm before doing it, and honor ``--dry-run``.
+    settings on their next lucode run — confirm before doing it, and honor ``--dry-run``.
     """
     name = existing.get("name")
     if not isinstance(name, str):
         raise RuntimeError(
             "This workspace has a managed config but the API didn't return its resource name, so "
-            "ucode can't delete it. Delete it in the workspace directly."
+            "lucode can't delete it. Delete it in the workspace directly."
         )
     print_warning(
         "Deleting removes the managed config entirely. Every developer falls back to their own "
-        "settings on their next ucode run."
+        "settings on their next lucode run."
     )
     if not prompt_yes_no_default("Delete the existing managed config?", default=False):
         print_note("Nothing was deleted.")
@@ -477,7 +477,7 @@ def setup_from_file(path: str) -> int:
     """Validate an admin-written manifest and save it, skipping the interactive flow.
 
     The non-interactive path for CI and for admins who'd rather keep the JSON in version control.
-    Reads ucode's own manifest shape (the same thing the wizard writes), not proto-JSON.
+    Reads lucode's own manifest shape (the same thing the wizard writes), not proto-JSON.
     """
     manifest_path = Path(path).expanduser()
     try:
@@ -497,7 +497,7 @@ def setup_from_file(path: str) -> int:
     workspace = state.get("workspace")
     if not workspace:
         raise RuntimeError(
-            "No workspace is configured. Run `ucode configure` first so ucode knows which "
+            "No workspace is configured. Run `lucode configure` first so lucode knows which "
             "workspace this manifest is for."
         )
 
@@ -510,7 +510,7 @@ def setup_from_file(path: str) -> int:
 
     save_managed_settings(workspace, manifest)
     _render_summary(workspace, manifest)
-    print_success(f"Saved to {manifest_path.name} -> ~/.ucode/managed-settings.json")
+    print_success(f"Saved to {manifest_path.name} -> ~/.lucode/managed-settings.json")
     _print_next_steps()
     return 0
 
@@ -519,9 +519,9 @@ def _print_next_steps() -> None:
     console.print()
     print_heading("Next steps")
     # Deliberately only `apply`. There is no way yet to try the authored config locally: the
-    # manifest describes what developers should get, while `ucode configure --dry-run` previews
+    # manifest describes what developers should get, while `lucode configure --dry-run` previews
     # this machine's own agent configs, so pointing at it implied a local test it doesn't perform.
-    print_note("Publish it to the workspace:  ucode apply")
+    print_note("Publish it to the workspace:  lucode apply")
 
 
 def setup_command(
@@ -541,9 +541,9 @@ def setup_command(
     if prompt_for_configuration is None or configure_state is None:
         raise RuntimeError("Interactive setup requires CLI configuration callbacks.")
 
-    print_section("ucode setup")
+    print_section("lucode setup")
     print_note("Author the managed coding config for this workspace.")
-    print_note("Developers pull it automatically when they run ucode.")
+    print_note("Developers pull it automatically when they run lucode.")
 
     workspace, profile = prompt_for_configuration()
     # `configure_shared_state` below authenticates too and prints its own success line, so this one
@@ -584,7 +584,7 @@ def setup_command(
     default_agent = picked[0]
     if len(picked) > 1:
         chosen = prompt_for_selection(
-            "Which agent should launch when a developer runs `ucode`?",
+            "Which agent should launch when a developer runs `lucode`?",
             [(tool, TOOL_SPECS[tool]["display"]) for tool in picked],
         )
         if not chosen:
@@ -643,21 +643,21 @@ def setup_command(
     save_managed_settings(workspace, manifest)
     _render_summary(workspace, manifest)
     console.print()
-    print_success("Saved to ~/.ucode/managed-settings.json")
+    print_success("Saved to ~/.lucode/managed-settings.json")
     _print_next_steps()
     return 0
 
 
 def show_command() -> int:
-    """Print the authored manifest and the proto-JSON `ucode apply` would publish."""
+    """Print the authored manifest and the proto-JSON `lucode apply` would publish."""
     workspace = load_state().get("workspace")
     manifest = load_managed_settings(workspace)
     if manifest is None:
-        print_note("No managed config has been authored yet. Run `ucode setup` to create one.")
+        print_note("No managed config has been authored yet. Run `lucode setup` to create one.")
         return 0
     _render_summary(workspace or "unknown", manifest)
     console.print()
-    print_heading("Payload for `ucode apply`")
+    print_heading("Payload for `lucode apply`")
     console.print(json.dumps(serialize_managed_config(manifest), indent=2))
     return 0
 
@@ -671,7 +671,7 @@ def _explain_publish_failure(reason: str) -> str:
         return (
             "Managed coding-agent configs aren't enabled on this workspace yet. Ask your Databricks "
             "contact to enable the `codingAgentConfigCrudEnabled` flag for it, then re-run "
-            "`ucode apply`."
+            "`lucode apply`."
         )
     if "permission_denied" in lowered or "http 403" in lowered:
         return (
@@ -680,8 +680,8 @@ def _explain_publish_failure(reason: str) -> str:
         )
     if "already_exists" in lowered:
         return (
-            "This workspace already has a managed config, but ucode couldn't read it to update in "
-            "place. Run `ucode apply` again — if it keeps failing, the existing config may need to "
+            "This workspace already has a managed config, but lucode couldn't read it to update in "
+            "place. Run `lucode apply` again — if it keeps failing, the existing config may need to "
             "be deleted by hand."
         )
     if "invalid_parameter_value" in lowered:
@@ -701,7 +701,7 @@ def apply_command(
     a failed recreate would leave the workspace with no managed config at all, and every developer
     would silently fall back to their own settings. Returns a process exit code.
     """
-    print_section("ucode apply")
+    print_section("lucode apply")
 
     state = load_state()
     workspace = state.get("workspace")
@@ -716,8 +716,8 @@ def apply_command(
     manifest = load_managed_settings(workspace)
     if manifest is None:
         raise RuntimeError(
-            "No managed config has been authored for this workspace. Run `ucode setup` first "
-            "(or `ucode setup --from-file <json>`)."
+            "No managed config has been authored for this workspace. Run `lucode setup` first "
+            "(or `lucode setup --from-file <json>`)."
         )
 
     # Auth first: publishing needs a token, and nothing is written until well below this point.
@@ -728,7 +728,7 @@ def apply_command(
         print_err("The authored config is not valid, so it was not published:")
         for error in errors:
             print_note(error)
-        print_note("Re-run `ucode setup` to fix it, or edit ~/.ucode/managed-settings.json.")
+        print_note("Re-run `lucode setup` to fix it, or edit ~/.lucode/managed-settings.json.")
         return 1
 
     token = get_databricks_token(workspace, profile)
@@ -751,7 +751,7 @@ def apply_command(
     if existing is not None and not isinstance(existing_name, str):
         raise RuntimeError(
             "This workspace has a managed config but the API didn't return its resource name, so "
-            "ucode can't update it in place. Delete it in the workspace and re-run `ucode apply`."
+            "lucode can't update it in place. Delete it in the workspace and re-run `lucode apply`."
         )
 
     console.print()
@@ -761,7 +761,7 @@ def apply_command(
         agents = ", ".join((existing.get("enabled_agents") or {}).keys()) or "no agents"
         print_warning(
             f"This will replace the config already published on {workspace} (currently: {agents}). "
-            "Every developer picks the new one up on their next ucode run."
+            "Every developer picks the new one up on their next lucode run."
         )
     if not yes and not prompt_yes_no_default("Publish this config?", default=False):
         print_note("Nothing was published.")
@@ -780,7 +780,7 @@ def apply_command(
 
     name = (published or {}).get("name") or existing_name or "coding-agent-configs/?"
     print_success(f"Published {name} to {workspace}")
-    print_note("Developers pick this up on their next ucode run.")
+    print_note("Developers pick this up on their next lucode run.")
     return 0
 
 

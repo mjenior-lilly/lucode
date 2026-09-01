@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import TypedDict
 
-from ucode.ui import console
+from lucode.ui import console
 
 
 class ToolSpec(TypedDict):
@@ -17,7 +17,7 @@ class ToolSpec(TypedDict):
     backup_path: Path
 
 
-APP_DIR = Path.home() / ".ucode"
+APP_DIR = Path.home() / ".lucode"
 
 _dry_run = False
 
