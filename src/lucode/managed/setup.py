@@ -30,14 +30,14 @@ import uuid
 from pathlib import Path
 from typing import cast
 
-import lucode.config_io as config_io
+import lucode.config as app_config
 from lucode.databricks.models import ANTHROPIC_FAMILIES
 from lucode.managed.config import (
     AGENT_ENUM_TO_TOOL,
     MCP_TYPE_ENUM_TO_TAG,
 )
 
-MANAGED_SETTINGS_PATH = config_io.APP_DIR / "managed-settings.json"
+MANAGED_SETTINGS_PATH = app_config.APP_DIR / "managed-settings.json"
 
 # lucode tool name -> CodingAgent proto enum, and lucode MCP type tag -> McpServerType proto enum.
 # Inverted from the read side's maps so the two directions cannot drift: adding an agent to
@@ -475,12 +475,14 @@ def save_managed_settings(workspace: str, manifest: dict) -> None:
     Stored alongside its workspace so ``lucode apply`` can refuse to publish a manifest that was
     authored against a different workspace.
     """
-    if config_io.is_dry_run():
+    if app_config.is_dry_run():
         return
     payload = {"workspace": workspace, "config": manifest}
-    config_io.ensure_parent_dir(MANAGED_SETTINGS_PATH)
+    app_config.ensure_parent_dir(MANAGED_SETTINGS_PATH)
     try:
-        MANAGED_SETTINGS_PATH.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        MANAGED_SETTINGS_PATH.write_text(
+            json.dumps(payload, indent=app_config.JSON_INDENT) + "\n", encoding="utf-8"
+        )
     except OSError as exc:
         raise RuntimeError(
             f"Failed to write managed settings file: {MANAGED_SETTINGS_PATH}"
@@ -495,7 +497,7 @@ def _restrict_permissions(path: Path) -> None:
     be group- or world-readable. No-op where unsupported (e.g. Windows).
     """
     try:
-        os.chmod(path, 0o600)
+        os.chmod(path, app_config.PRIVATE_FILE_MODE)
     except (OSError, NotImplementedError):
         pass
 
@@ -507,7 +509,7 @@ def load_managed_settings(workspace: str | None = None) -> dict | None:
     does, so a manifest left over from a different workspace is ignored rather than published to the
     wrong place. Omit it to read whatever is on disk.
     """
-    data = config_io.read_json_safe(MANAGED_SETTINGS_PATH)
+    data = app_config.read_json_safe(MANAGED_SETTINGS_PATH)
     if not data:
         return None
     if workspace is not None and data.get("workspace") != workspace:
@@ -518,5 +520,5 @@ def load_managed_settings(workspace: str | None = None) -> dict | None:
 
 def managed_settings_workspace() -> str | None:
     """The workspace the on-disk manifest was authored for, or None when there is no manifest."""
-    workspace = config_io.read_json_safe(MANAGED_SETTINGS_PATH).get("workspace")
+    workspace = app_config.read_json_safe(MANAGED_SETTINGS_PATH).get("workspace")
     return workspace if isinstance(workspace, str) and workspace else None

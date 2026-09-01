@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from lucode.config import BUDGET_WARN_FRACTION
 from lucode.managed.budget import (
-    BUDGET_WARN_AT,
     budget_state,
     budget_usage_percent,
     budget_warn_fraction,
@@ -52,17 +52,17 @@ class TestBudgetWarnFraction:
     def test_ignores_tiers_at_zero(self):
         # A 0.0 tier activates from the first dollar, so warning on it would be permanent amber.
         assert budget_warn_fraction(self._policy(0.0, 0.5, 0.8)) == 0.5
-        assert budget_warn_fraction(self._policy(0.0)) == BUDGET_WARN_AT
+        assert budget_warn_fraction(self._policy(0.0)) == BUDGET_WARN_FRACTION
 
     def test_falls_back_without_a_policy(self):
-        assert budget_warn_fraction(None) == BUDGET_WARN_AT
-        assert budget_warn_fraction({}) == BUDGET_WARN_AT
-        assert budget_warn_fraction({"budget_policy": {"tiers": []}}) == BUDGET_WARN_AT
+        assert budget_warn_fraction(None) == BUDGET_WARN_FRACTION
+        assert budget_warn_fraction({}) == BUDGET_WARN_FRACTION
+        assert budget_warn_fraction({"budget_policy": {"tiers": []}}) == BUDGET_WARN_FRACTION
 
     @pytest.mark.parametrize("bad", [True, "0.5", None, 1.5, -0.2])
     def test_ignores_unusable_percentages(self, bad):
         # `True` would otherwise read as a 1.0 fraction, and out-of-range values aren't meaningful.
-        assert budget_warn_fraction(self._policy(bad)) == BUDGET_WARN_AT
+        assert budget_warn_fraction(self._policy(bad)) == BUDGET_WARN_FRACTION
 
 
 class TestBudgetUsagePercent:

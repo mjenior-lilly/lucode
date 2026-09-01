@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from lucode.config_io import APP_DIR, is_dry_run
+from lucode.config import APP_DIR, AUTH_REFRESH_INTERVAL_MS, JSON_INDENT, is_dry_run
 from lucode.databricks.auth import build_auth_shell_command
 from lucode.databricks.models import build_shared_base_urls
 
@@ -14,7 +14,6 @@ STATE_VERSION = 3
 # Present only in memory: the layered values render the agent settings files, while `save_state`
 # restores what's under it so `state.json` keeps recording the developer's own configuration.
 MANAGED_OVERLAY_KEY = "_managed_overlay"
-AUTH_REFRESH_INTERVAL_MS = 900_000
 
 
 def load_full_state() -> dict:
@@ -61,7 +60,7 @@ def save_state(state: dict) -> None:
         full["workspaces"][workspace] = hydrate_state(_without_managed_overlay(state))
     try:
         APP_DIR.mkdir(parents=True, exist_ok=True)
-        STATE_PATH.write_text(json.dumps(full, indent=2), encoding="utf-8")
+        STATE_PATH.write_text(json.dumps(full, indent=JSON_INDENT), encoding="utf-8")
     except OSError as exc:
         raise RuntimeError(f"Failed to write state file: {STATE_PATH}") from exc
 
@@ -95,7 +94,7 @@ def set_current_workspace(workspace: str | None) -> None:
     full["current_workspace"] = workspace
     try:
         APP_DIR.mkdir(parents=True, exist_ok=True)
-        STATE_PATH.write_text(json.dumps(full, indent=2), encoding="utf-8")
+        STATE_PATH.write_text(json.dumps(full, indent=JSON_INDENT), encoding="utf-8")
     except OSError as exc:
         raise RuntimeError(f"Failed to write state file: {STATE_PATH}") from exc
 
@@ -176,7 +175,7 @@ def clear_state() -> None:
         full["current_workspace"] = None
     try:
         APP_DIR.mkdir(parents=True, exist_ok=True)
-        STATE_PATH.write_text(json.dumps(full, indent=2), encoding="utf-8")
+        STATE_PATH.write_text(json.dumps(full, indent=JSON_INDENT), encoding="utf-8")
     except OSError as exc:
         raise RuntimeError(f"Failed to clear state file: {STATE_PATH}") from exc
 

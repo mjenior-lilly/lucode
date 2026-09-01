@@ -325,9 +325,9 @@ class TestPiValidateCmd:
 class TestWriteToolConfig:
     def _setup(self, tmp_path, monkeypatch):
         import lucode.agents.pi as pi_mod
-        import lucode.config_io as config_io_mod
+        import lucode.config as config_mod
 
-        monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
         config_file = tmp_path / "models.json"
         backup_file = tmp_path / "pi-backup.json"
         settings_file = tmp_path / "settings.json"

@@ -11,8 +11,7 @@ from __future__ import annotations
 from rich.panel import Panel
 from rich.text import Text
 
-# Fallback amber point for a workspace whose policy defines no tier to derive one from.
-BUDGET_WARN_AT = 0.8
+from lucode.config import BUDGET_METER_WIDTH, BUDGET_WARN_FRACTION
 
 _BUDGET_STATE_STYLE = {"ok": "green", "warn": "yellow", "exceeded": "red"}
 
@@ -34,10 +33,10 @@ def budget_warn_fraction(managed: dict | None) -> float:
         and not isinstance(pct, bool)
         and 0 < pct <= 1
     ]
-    return min(fractions) if fractions else BUDGET_WARN_AT
+    return min(fractions) if fractions else BUDGET_WARN_FRACTION
 
 
-def budget_state(spend: float, threshold: float, warn_at: float = BUDGET_WARN_AT) -> str:
+def budget_state(spend: float, threshold: float, warn_at: float = BUDGET_WARN_FRACTION) -> str:
     """Classify spend against its threshold as ``ok``, ``warn``, or ``exceeded``."""
     if threshold <= 0:
         return "ok"
@@ -55,7 +54,7 @@ def budget_usage_percent(spend: float, threshold: float) -> int:
     return max(int(((spend / threshold) * 100) + 0.5), 0)
 
 
-def _bar_markup(percent: int, color: str, *, width: int = 28) -> str:
+def _bar_markup(percent: int, color: str, *, width: int = BUDGET_METER_WIDTH) -> str:
     """A Rich-markup fill bar: the filled portion in the state color, the remainder dimmed."""
     capped = min(max(percent, 0), 100)
     filled = min(max((capped * width + 50) // 100, 0), width)

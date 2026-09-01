@@ -26,7 +26,7 @@ from lucode.agents import (
     launch as launch_agent,
 )
 from lucode.agents.pi import PI_SETTINGS_BACKUP_PATH, PI_SETTINGS_PATH
-from lucode.config_io import is_dry_run, restore_file, set_dry_run
+from lucode.config import is_dry_run, restore_file, set_dry_run
 from lucode.databricks.auth import (
     apply_pat_environment,
     ensure_databricks_auth,
@@ -48,6 +48,7 @@ from lucode.databricks.models import (
     discover_model_services,
     ensure_ai_gateway_v2,
 )
+from lucode.fetch import configure_fetch_command
 from lucode.managed.budget import (
     budget_usage_percent,
     recommendation_line,
@@ -72,7 +73,6 @@ from lucode.managed.wizard import apply_command, setup_command, show_command
 from lucode.mcp.commands import configure_mcp_command
 from lucode.mcp.config import MCP_CLIENTS, purge_cross_workspace_mcp_residue, revert_mcp_configs
 from lucode.mcp.skills import SKILLS_MCP_KIND, configure_skills_mcp_command
-from lucode.skills_download import configure_skills_download_command
 from lucode.state import (
     STATE_PATH,
     clear_state,
@@ -1647,7 +1647,7 @@ def configure_skills(
         if mcp or not locations:
             configure_skills_mcp_command(locations)
         else:
-            configure_skills_download_command(locations, path=path, skills=selected_skills)
+            configure_fetch_command(locations, path=path, skills=selected_skills)
     except (RuntimeError, ValueError) as exc:
         print_err(str(exc))
         raise typer.Exit(1) from None

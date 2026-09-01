@@ -1,4 +1,4 @@
-"""Tests for config_io.py — file I/O helpers, dry-run flag, deep_merge_dict."""
+"""Tests for config.py — file I/O helpers, dry-run flag, deep_merge_dict."""
 
 from __future__ import annotations
 
@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-import lucode.config_io as config_io
-from lucode.config_io import (
+import lucode.config as config_module
+from lucode.config import (
     backup_existing_file,
     deep_merge_dict,
     ensure_parent_dir,
@@ -72,7 +72,7 @@ class TestBackupAndRestore:
         config = tmp_path / "config.json"
         backup = tmp_path / "backup.json"
         config.write_text('{"key": "value"}', encoding="utf-8")
-        monkeypatch.setattr(config_io, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_module, "APP_DIR", tmp_path)
 
         result = backup_existing_file(config, backup)
 
@@ -81,7 +81,7 @@ class TestBackupAndRestore:
         assert backup.read_text() == config.read_text()
 
     def test_backup_skipped_when_config_missing(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(config_io, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_module, "APP_DIR", tmp_path)
         result = backup_existing_file(tmp_path / "missing.json", tmp_path / "backup.json")
         assert result is False
 
@@ -90,7 +90,7 @@ class TestBackupAndRestore:
         backup = tmp_path / "backup.json"
         config.write_text("new", encoding="utf-8")
         backup.write_text("old", encoding="utf-8")
-        monkeypatch.setattr(config_io, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_module, "APP_DIR", tmp_path)
 
         backup_existing_file(config, backup)
 
@@ -100,7 +100,7 @@ class TestBackupAndRestore:
         config = tmp_path / "config.json"
         backup = tmp_path / "backup.json"
         config.write_text("data", encoding="utf-8")
-        monkeypatch.setattr(config_io, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_module, "APP_DIR", tmp_path)
         set_dry_run(True)
 
         result = backup_existing_file(config, backup)

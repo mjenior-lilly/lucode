@@ -20,8 +20,6 @@ from lucode.ui import (
 )
 
 SKILLS_MCP_KIND = "skills"
-
-
 SKILLS_MCP_SERVER_NAME = "databricks-skill-registry"
 
 

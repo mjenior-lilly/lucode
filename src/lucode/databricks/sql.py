@@ -11,6 +11,7 @@ from urllib import request as urllib_request
 
 from databricks.sql.exc import ServerOperationError
 
+from lucode.config import SQL_WAREHOUSE_DISCOVERY_TIMEOUT_SECONDS
 from lucode.databricks.transport import workspace_hostname
 
 
@@ -45,7 +46,9 @@ def discover_sql_warehouses(
     )
 
     try:
-        with urllib_request.urlopen(request, timeout=20) as response:
+        with urllib_request.urlopen(
+            request, timeout=SQL_WAREHOUSE_DISCOVERY_TIMEOUT_SECONDS
+        ) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except urllib_error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace") if exc.fp else ""

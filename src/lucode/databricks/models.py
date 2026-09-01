@@ -5,10 +5,16 @@ from __future__ import annotations
 from typing import cast
 from urllib.parse import urlencode
 
+from lucode.config import (
+    DISCOVERY_ERROR_SAMPLE_COUNT,
+    DISCOVERY_HTTP_TIMEOUT_SECONDS,
+    MODEL_SERVICES_MAX_PAGES,
+    MODEL_SERVICES_PAGE_RETRIES,
+    MODEL_SERVICES_PAGE_SIZE,
+)
 from lucode.databricks.transport import debug, http_get_json, workspace_hostname
 
 AI_GATEWAY_V2_DOCS_URL = "https://docs.databricks.com/aws/en/ai-gateway/overview-beta"
-TOKEN_REFRESH_INTERVAL_SECONDS = 1800
 # A model-service's `name` is `model-services/system.ai.<model-name>`; the
 # part after the prefix is exactly the model string agents send (no
 # `databricks-` infix — that only appears on the inner destination name).
@@ -90,17 +96,8 @@ def _model_service_id(service: dict) -> str | None:
     return name or None
 
 
-# The model-services metastore listing REQUIRES a bounded `page_size`:
-# unparameterized or large-page requests (verified against
-# eng-ml-agent-platform.staging 2026-06-14) return `HTTP 499` with an empty
-# body, while pages of 10–100 come back reliably. A page can still 499
-# intermittently under load, so each gets a few retries before we give up.
-_MODEL_SERVICES_PAGE_SIZE = 100
-_MODEL_SERVICES_PAGE_RETRIES = 4
-
-
 def _get_model_services_page(
-    url: str, token: str, *, retries: int = _MODEL_SERVICES_PAGE_RETRIES
+    url: str, token: str, *, retries: int = MODEL_SERVICES_PAGE_RETRIES
 ) -> tuple[dict | list | None, str | None]:
     """GET one model-services page, retrying on failure.
 
@@ -110,7 +107,7 @@ def _get_model_services_page(
     payload: dict | list | None = None
     reason: str | None = None
     for attempt in range(retries):
-        payload, reason = http_get_json(url, token, timeout=30)
+        payload, reason = http_get_json(url, token, timeout=DISCOVERY_HTTP_TIMEOUT_SECONDS)
         if payload is not None:
             return payload, None
         debug("model-services page", f"attempt {attempt + 1}/{retries} failed: {reason}")
@@ -134,8 +131,8 @@ def list_model_services(
     workspace: str,
     token: str,
     *,
-    page_size: int = _MODEL_SERVICES_PAGE_SIZE,
-    max_pages: int = 100,
+    page_size: int = MODEL_SERVICES_PAGE_SIZE,
+    max_pages: int = MODEL_SERVICES_MAX_PAGES,
     use_cache: bool = True,
 ) -> tuple[list[str], str | None]:
     """List all `system.ai.*` model ids via the UC model-services API.
@@ -231,7 +228,7 @@ def discover_model_services(
     oss_models = [m for m in ids if any(family in m for family in _OSS_MODEL_FAMILIES)]
 
     if not (claude_models or codex_models or gemini_models or oss_models):
-        sample = ", ".join(ids[:5])
+        sample = ", ".join(ids[:DISCOVERY_ERROR_SAMPLE_COUNT])
         return (
             {},
             [],
@@ -276,7 +273,7 @@ def discover_claude_models(workspace: str, token: str) -> tuple[dict[str, str], 
         return result, None
     if not raw_ids:
         return {}, "AI Gateway returned no Claude model ids"
-    sample = ", ".join(raw_ids[:5])
+    sample = ", ".join(raw_ids[:DISCOVERY_ERROR_SAMPLE_COUNT])
     families = ",".join(ANTHROPIC_FAMILIES)
     return {}, (
         "AI Gateway returned model ids but none matched "

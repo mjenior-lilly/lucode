@@ -18,6 +18,12 @@ from rich.markup import escape
 from rich.panel import Panel
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn
 
+from lucode.config import (
+    BACKGROUND_THREAD_JOIN_TIMEOUT_SECONDS,
+    SPINNER_FRAME_INTERVAL_SECONDS,
+    TEXT_METER_WIDTH,
+)
+
 console = Console(highlight=False)
 err_console = Console(stderr=True, highlight=False)
 
@@ -139,7 +145,7 @@ def spinner(message: str | Callable[[], str]):
             # doesn't leave stale characters behind.
             sys.stdout.write(f"\r\033[2m{frame}\033[0m {current_message()}\033[K")
             sys.stdout.flush()
-            time.sleep(0.1)
+            time.sleep(SPINNER_FRAME_INTERVAL_SECONDS)
         sys.stdout.write("\r\033[K")
         sys.stdout.flush()
 
@@ -149,7 +155,7 @@ def spinner(message: str | Callable[[], str]):
         yield
     finally:
         stop_event.set()
-        thread.join(timeout=1)
+        thread.join(timeout=BACKGROUND_THREAD_JOIN_TIMEOUT_SECONDS)
 
 
 @contextmanager
@@ -232,7 +238,7 @@ def format_usd(amount: Decimal) -> str:
     return f"${amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP):,}"
 
 
-def format_meter(fraction: float, width: int = 30) -> str:
+def format_meter(fraction: float, width: int = TEXT_METER_WIDTH) -> str:
     """Text meter for `fraction` of a whole, clamped to [0, 1]."""
     clamped = min(max(fraction, 0.0), 1.0)
     filled = int(clamped * width)

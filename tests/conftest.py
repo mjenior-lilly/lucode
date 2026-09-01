@@ -23,14 +23,14 @@ def _isolate_lucode_state(tmp_path, monkeypatch):
     Defense in depth: even if an individual test forgets to patch save_state,
     it can never touch the developer's real ~/.lucode/state.json.
     """
-    import lucode.config_io as config_io_mod
+    import lucode.config as config_mod
     import lucode.databricks.models as databricks_models
     import lucode.state as state_mod
 
     state_dir = tmp_path / ".lucode"
     state_dir.mkdir()
     monkeypatch.setattr(state_mod, "STATE_PATH", state_dir / "state.json")
-    monkeypatch.setattr(config_io_mod, "APP_DIR", state_dir)
+    monkeypatch.setattr(config_mod, "APP_DIR", state_dir)
     # The model-services listing is memoized for the life of the process, so without this a cached
     # result would leak into the next test and make a stubbed listing look like it was never called.
     databricks_models.clear_model_services_cache()

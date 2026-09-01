@@ -1,12 +1,12 @@
-"""Tests for skills_download.py — the UC skill-download client, on-disk writer,
+"""Tests for fetch.py — the UC skill-download client, on-disk writer,
 and download orchestration."""
 
 from __future__ import annotations
 
 import pytest
 
-import lucode.skills_download as sd
-from lucode.skills_download import skill_dir_roots, write_skill
+import lucode.fetch as sd
+from lucode.fetch import skill_dir_roots, write_skill
 
 WS = "https://example.databricks.com"
 
@@ -482,7 +482,7 @@ class TestConfigureSkillsDownloadCommand:
     def test_downloads_then_registers_connection(self, monkeypatch):
         calls = self._stub(monkeypatch)
 
-        assert sd.configure_skills_download_command(["a.b"], path="/tmp/skills") == 0
+        assert sd.configure_fetch_command(["a.b"], path="/tmp/skills") == 0
 
         assert calls["download"] == (WS, "token", ["a.b"], "/tmp/skills", None)
         assert calls["register"] == (WS, "profile", ["opencode"])
@@ -490,7 +490,7 @@ class TestConfigureSkillsDownloadCommand:
     def test_none_path_threads_through(self, monkeypatch):
         calls = self._stub(monkeypatch)
 
-        assert sd.configure_skills_download_command(["a.b"], path=None) == 0
+        assert sd.configure_fetch_command(["a.b"], path=None) == 0
 
         assert calls["download"] == (WS, "token", ["a.b"], None, None)
         assert calls["register"] == (WS, "profile", ["opencode"])
@@ -498,7 +498,7 @@ class TestConfigureSkillsDownloadCommand:
     def test_skills_filter_threads_through(self, monkeypatch):
         calls = self._stub(monkeypatch)
 
-        assert sd.configure_skills_download_command(["a.b"], path=None, skills={"triage"}) == 0
+        assert sd.configure_fetch_command(["a.b"], path=None, skills={"triage"}) == 0
 
         assert calls["download"] == (WS, "token", ["a.b"], None, {"triage"})
         assert calls["register"] == (WS, "profile", ["opencode"])

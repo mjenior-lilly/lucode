@@ -11,6 +11,21 @@ from concurrent.futures import TimeoutError as FutureTimeoutError
 from typing import cast
 from urllib.parse import urlencode
 
+from lucode.config import (
+    DATABRICKS_APPS_PAGE_LIMIT,
+    DATABRICKS_CONNECTIONS_MAX_RESULTS,
+    DATABRICKS_MCP_DISCOVERY_TIMEOUT_SECONDS,
+    DISCOVERY_HTTP_TIMEOUT_SECONDS,
+    GENIE_SPACES_PAGE_SIZE,
+    MCP_SERVICES_WALK_DEADLINE_SECONDS,
+    UC_DISCOVERY_MAX_WORKERS,
+    UC_FUNCTION_PROBE_TIMEOUT_SECONDS,
+    UC_FUNCTIONS_DEADLINE_SECONDS,
+    UC_LIST_HTTP_TIMEOUT_SECONDS,
+    UC_LIST_MAX_PAGES,
+    UC_LIST_PAGE_SIZE,
+    VECTOR_SEARCH_DEADLINE_SECONDS,
+)
 from lucode.databricks.auth import _profile_args, build_databricks_cli_env, run
 from lucode.databricks.transport import http_get_json, workspace_hostname
 
@@ -47,7 +62,7 @@ def list_databricks_connections(workspace: str, profile: str | None = None) -> l
                 "list",
                 *_profile_args(profile),
                 "--max-results",
-                "0",
+                str(DATABRICKS_CONNECTIONS_MAX_RESULTS),
                 "--output",
                 "json",
             ]
@@ -59,7 +74,7 @@ def list_databricks_connections(workspace: str, profile: str | None = None) -> l
                 capture_output=True,
                 text=True,
                 env=env,
-                timeout=30,
+                timeout=DATABRICKS_MCP_DISCOVERY_TIMEOUT_SECONDS,
             )
             payload = json.loads(result.stdout or "{}")
             page_connections, page_token = _extract_connection_page(payload)
@@ -110,7 +125,7 @@ def list_genie_spaces(workspace: str, profile: str | None = None) -> list[dict]:
                 "list-spaces",
                 *_profile_args(profile),
                 "--page-size",
-                "100",
+                str(GENIE_SPACES_PAGE_SIZE),
                 "--output",
                 "json",
             ]
@@ -122,7 +137,7 @@ def list_genie_spaces(workspace: str, profile: str | None = None) -> list[dict]:
                 capture_output=True,
                 text=True,
                 env=env,
-                timeout=30,
+                timeout=DATABRICKS_MCP_DISCOVERY_TIMEOUT_SECONDS,
             )
             payload = json.loads(result.stdout or "{}")
             page_spaces, page_token = _extract_genie_spaces_page(payload)
@@ -166,14 +181,14 @@ def list_databricks_apps(workspace: str, profile: str | None = None) -> list[dic
                 "list",
                 *_profile_args(profile),
                 "--limit",
-                "1000",
+                str(DATABRICKS_APPS_PAGE_LIMIT),
                 "--output",
                 "json",
             ],
             capture_output=True,
             text=True,
             env=env,
-            timeout=30,
+            timeout=DATABRICKS_MCP_DISCOVERY_TIMEOUT_SECONDS,
         )
         return _extract_apps_payload(json.loads(result.stdout or "[]"))
     except subprocess.CalledProcessError as exc:
@@ -210,7 +225,7 @@ def list_mcp_services(
     token: str,
     parent: str = "system.ai",
     *,
-    timeout: float = 30,
+    timeout: float = DISCOVERY_HTTP_TIMEOUT_SECONDS,
 ) -> tuple[list[str], str | None]:
     """List UC MCP services under ``parent`` (a ``<catalog>.<schema>`` ref).
 
@@ -258,17 +273,6 @@ def build_skills_mcp_url(workspace: str, locations: list[str]) -> str:
 # `list_uc_functions_catalog_schemas` walks UC catalogs+schemas in parallel and
 # keeps only schemas with at least one user function.
 
-_UC_LIST_PAGE_SIZE = 200
-_UC_LIST_MAX_PAGES = 50
-_UC_FUNCTION_PROBE_WORKERS = 16
-_UC_LIST_HTTP_TIMEOUT = 10
-_UC_FUNCTION_PROBE_TIMEOUT = 5
-_VECTOR_SEARCH_DEADLINE_SECONDS = 15.0
-_UC_FUNCTIONS_DEADLINE_SECONDS = 20.0
-# Most MCP services live outside `system.ai`, so this workspace-wide walk needs
-# enough time to enumerate them; a slow workspace still degrades to partial
-# results once the budget is exceeded instead of hanging indefinitely.
-_MCP_SERVICES_WALK_DEADLINE_SECONDS = 30.0
 # Skip UC catalogs whose schemas almost never carry user-callable functions
 # you'd want to expose as agent tools.
 _UC_FUNCTIONS_SKIP_CATALOGS = frozenset(
@@ -334,9 +338,9 @@ def _paginated_json_items(
     *,
     items_key: str,
     extra_params: dict[str, str] | None = None,
-    page_size: int = _UC_LIST_PAGE_SIZE,
-    max_pages: int = _UC_LIST_MAX_PAGES,
-    timeout: float = 30,
+    page_size: int = UC_LIST_PAGE_SIZE,
+    max_pages: int = UC_LIST_MAX_PAGES,
+    timeout: float = DISCOVERY_HTTP_TIMEOUT_SECONDS,
     deadline: float | None = None,
 ) -> tuple[list[dict], str | None]:
     """Walk a Databricks `next_page_token` listing and return all items.
@@ -399,7 +403,7 @@ def list_vector_search_catalog_schemas(
     workspace: str,
     token: str,
     *,
-    deadline_seconds: float = _VECTOR_SEARCH_DEADLINE_SECONDS,
+    deadline_seconds: float = VECTOR_SEARCH_DEADLINE_SECONDS,
     on_progress: Callable[[int, int, int], None] | None = None,
 ) -> tuple[list[tuple[str, str]], str | None]:
     """Return sorted unique `(catalog, schema)` pairs that contain at least
@@ -416,7 +420,7 @@ def list_vector_search_catalog_schemas(
         f"https://{hostname}/api/2.0/vector-search/endpoints",
         token,
         items_key="endpoints",
-        timeout=_UC_LIST_HTTP_TIMEOUT,
+        timeout=UC_LIST_HTTP_TIMEOUT_SECONDS,
         deadline=deadline,
     )
     if not endpoints:
@@ -429,7 +433,7 @@ def list_vector_search_catalog_schemas(
     pairs: set[tuple[str, str]] = set()
     endpoints_total = len(endpoint_names)
     endpoints_done = 0
-    workers = max(1, min(_UC_FUNCTION_PROBE_WORKERS, endpoints_total))
+    workers = max(1, min(UC_DISCOVERY_MAX_WORKERS, endpoints_total))
     pool = ThreadPoolExecutor(max_workers=workers)
     futures = {
         pool.submit(
@@ -438,7 +442,7 @@ def list_vector_search_catalog_schemas(
             token,
             items_key="vector_indexes",
             extra_params={"endpoint_name": name},
-            timeout=_UC_LIST_HTTP_TIMEOUT,
+            timeout=UC_LIST_HTTP_TIMEOUT_SECONDS,
             deadline=deadline,
         ): name
         for name in endpoint_names
@@ -473,7 +477,9 @@ def _schema_has_user_function(
     remaining = deadline - time.monotonic()
     if remaining <= 0:
         return False
-    payload, _reason = http_get_json(url, token, timeout=min(_UC_FUNCTION_PROBE_TIMEOUT, remaining))
+    payload, _reason = http_get_json(
+        url, token, timeout=min(UC_FUNCTION_PROBE_TIMEOUT_SECONDS, remaining)
+    )
     if not isinstance(payload, dict):
         return False
     functions = payload.get("functions") or []
@@ -488,7 +494,7 @@ def _list_uc_catalog_schema_pairs(
         f"https://{hostname}/api/2.1/unity-catalog/catalogs",
         token,
         items_key="catalogs",
-        timeout=_UC_LIST_HTTP_TIMEOUT,
+        timeout=UC_LIST_HTTP_TIMEOUT_SECONDS,
         deadline=deadline,
     )
     if not catalogs:
@@ -507,7 +513,7 @@ def _list_uc_catalog_schema_pairs(
         return [], "deadline exceeded while listing UC catalogs"
 
     candidate_pairs: list[tuple[str, str]] = []
-    workers = max(1, min(_UC_FUNCTION_PROBE_WORKERS, len(catalog_names)))
+    workers = max(1, min(UC_DISCOVERY_MAX_WORKERS, len(catalog_names)))
     pool = ThreadPoolExecutor(max_workers=workers)
     futures = {
         pool.submit(
@@ -516,7 +522,7 @@ def _list_uc_catalog_schema_pairs(
             token,
             items_key="schemas",
             extra_params={"catalog_name": catalog},
-            timeout=_UC_LIST_HTTP_TIMEOUT,
+            timeout=UC_LIST_HTTP_TIMEOUT_SECONDS,
             deadline=deadline,
         ): catalog
         for catalog in catalog_names
@@ -541,7 +547,7 @@ def list_uc_functions_catalog_schemas(
     workspace: str,
     token: str,
     *,
-    deadline_seconds: float = _UC_FUNCTIONS_DEADLINE_SECONDS,
+    deadline_seconds: float = UC_FUNCTIONS_DEADLINE_SECONDS,
     on_progress: Callable[[int, int, int], None] | None = None,
 ) -> tuple[list[tuple[str, str]], str | None]:
     """Return sorted unique `(catalog, schema)` pairs containing at least one
@@ -559,7 +565,7 @@ def list_uc_functions_catalog_schemas(
     pairs: set[tuple[str, str]] = set()
     schemas_total = len(candidate_pairs)
     schemas_done = 0
-    pool = ThreadPoolExecutor(max_workers=_UC_FUNCTION_PROBE_WORKERS)
+    pool = ThreadPoolExecutor(max_workers=UC_DISCOVERY_MAX_WORKERS)
     futures = {
         pool.submit(_schema_has_user_function, hostname, token, catalog, schema, deadline): (
             catalog,
@@ -591,7 +597,7 @@ def list_all_mcp_services(
     workspace: str,
     token: str,
     *,
-    deadline_seconds: float = _MCP_SERVICES_WALK_DEADLINE_SECONDS,
+    deadline_seconds: float = MCP_SERVICES_WALK_DEADLINE_SECONDS,
     on_progress: Callable[[int, int, int], None] | None = None,
 ) -> tuple[list[str], str | None]:
     """Return sorted unique MCP-service full names across every `<catalog>.<schema>`
@@ -615,7 +621,7 @@ def list_all_mcp_services(
     names: set[str] = set()
     schemas_total = len(schema_refs)
     schemas_done = 0
-    workers = max(1, min(_UC_FUNCTION_PROBE_WORKERS, schemas_total))
+    workers = max(1, min(UC_DISCOVERY_MAX_WORKERS, schemas_total))
     pool = ThreadPoolExecutor(max_workers=workers)
 
     def list_before_deadline(ref: str):

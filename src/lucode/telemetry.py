@@ -14,6 +14,8 @@ import subprocess
 from functools import cache
 from importlib.metadata import PackageNotFoundError, version
 
+from lucode.config import AGENT_VERSION_CHECK_TIMEOUT_SECONDS
+
 _SEMVER_RE = re.compile(r"\d+\.\d+\.\d+[-+0-9A-Za-z.]*")
 
 
@@ -38,7 +40,7 @@ def agent_version(binary: str) -> str:
             [binary, "--version"],
             capture_output=True,
             text=True,
-            timeout=2,
+            timeout=AGENT_VERSION_CHECK_TIMEOUT_SECONDS,
             check=False,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):

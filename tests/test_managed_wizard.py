@@ -15,7 +15,7 @@ import typer.main
 from typer.testing import CliRunner
 
 import lucode.cli as cli_mod
-import lucode.config_io as config_io_mod
+import lucode.config as config_mod
 import lucode.managed.setup as managed_setup_mod
 import lucode.managed.wizard as wizard
 from lucode.cli import app
@@ -44,11 +44,11 @@ STATE = {
 @pytest.fixture(autouse=True)
 def _isolate_settings(tmp_path, monkeypatch):
     """Point the manifest path at a tmp dir so no test touches the real ~/.lucode."""
-    monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+    monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
     monkeypatch.setattr(
         managed_setup_mod, "MANAGED_SETTINGS_PATH", tmp_path / "managed-settings.json"
     )
-    monkeypatch.setattr(config_io_mod, "_dry_run", False)
+    monkeypatch.setattr(config_mod, "_dry_run", False)
 
 
 class TestMcpUrlClassification:

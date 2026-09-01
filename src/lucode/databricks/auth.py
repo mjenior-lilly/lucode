@@ -13,6 +13,15 @@ import subprocess
 from pathlib import Path
 from typing import Literal, overload
 
+from lucode.config import (
+    DATABRICKS_AI_TOOLS_INSTALL_TIMEOUT_SECONDS,
+    DATABRICKS_AUTH_CHECK_TIMEOUT_SECONDS,
+    DATABRICKS_AUTH_REFRESH_TIMEOUT_SECONDS,
+    DATABRICKS_CLI_INSTALL_TIMEOUT_SECONDS,
+    DATABRICKS_CLI_VERSION_TIMEOUT_SECONDS,
+    DATABRICKS_LOGIN_TIMEOUT_SECONDS,
+    DATABRICKS_PROFILE_LIST_TIMEOUT_SECONDS,
+)
 from lucode.databricks.transport import (
     debug,
     format_subprocess_result,
@@ -102,14 +111,23 @@ def _run_databricks_cli_installer(brew_subcommand: str = "install") -> None:
         if system == "Windows":
             run(
                 ["powershell", "-Command", f"irm {WINDOWS_DATABRICKS_INSTALL_URL} | iex"],
-                timeout=240,
+                timeout=DATABRICKS_CLI_INSTALL_TIMEOUT_SECONDS,
             )
         elif system == "Darwin" and shutil.which("brew"):
-            run(["brew", brew_subcommand, "databricks/tap/databricks"], timeout=240)
+            run(
+                ["brew", brew_subcommand, "databricks/tap/databricks"],
+                timeout=DATABRICKS_CLI_INSTALL_TIMEOUT_SECONDS,
+            )
         elif shutil.which("curl"):
-            run(["sh", "-c", f"curl -fsSL {UNIX_DATABRICKS_INSTALL_URL} | sudo sh"], timeout=240)
+            run(
+                ["sh", "-c", f"curl -fsSL {UNIX_DATABRICKS_INSTALL_URL} | sudo sh"],
+                timeout=DATABRICKS_CLI_INSTALL_TIMEOUT_SECONDS,
+            )
         elif shutil.which("wget"):
-            run(["sh", "-c", f"wget -qO- {UNIX_DATABRICKS_INSTALL_URL} | sudo sh"], timeout=240)
+            run(
+                ["sh", "-c", f"wget -qO- {UNIX_DATABRICKS_INSTALL_URL} | sudo sh"],
+                timeout=DATABRICKS_CLI_INSTALL_TIMEOUT_SECONDS,
+            )
         else:
             raise RuntimeError("Neither curl nor wget is available.")
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, RuntimeError) as exc:
@@ -123,7 +141,7 @@ def ensure_databricks_cli_version() -> None:
             check=False,
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=DATABRICKS_CLI_VERSION_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise RuntimeError("Failed to read Databricks CLI version.") from exc
@@ -180,7 +198,7 @@ def install_ai_tools(agent_tokens: list[str], profile: str | None = None) -> Non
                 check=True,
                 capture_output=True,
                 text=True,
-                timeout=300,
+                timeout=DATABRICKS_AI_TOOLS_INSTALL_TIMEOUT_SECONDS,
             )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as exc:
         # The CLI version is already guaranteed by ensure_databricks_cli_version,
@@ -233,7 +251,7 @@ def has_valid_databricks_auth(workspace: str, profile: str | None = None) -> boo
             capture_output=True,
             text=True,
             env=env,
-            timeout=15,
+            timeout=DATABRICKS_AUTH_CHECK_TIMEOUT_SECONDS,
         )
         debug(
             "has_valid_databricks_auth",
@@ -263,7 +281,7 @@ def list_profile_entries() -> list[dict]:
             check=False,
             capture_output=True,
             text=True,
-            timeout=20,
+            timeout=DATABRICKS_PROFILE_LIST_TIMEOUT_SECONDS,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         debug("list_profile_entries", f"subprocess error: {type(exc).__name__}: {exc}")
@@ -406,7 +424,11 @@ def run_databricks_login(workspace: str, profile: str | None = None) -> None:
             workspace,
             *_profile_args(profile_name),
         ]
-        run(cmd, env=build_databricks_cli_env(workspace, profile_name), timeout=300)
+        run(
+            cmd,
+            env=build_databricks_cli_env(workspace, profile_name),
+            timeout=DATABRICKS_LOGIN_TIMEOUT_SECONDS,
+        )
     except subprocess.CalledProcessError as exc:
         raise RuntimeError("`databricks auth login` failed.") from exc
     except subprocess.TimeoutExpired as exc:
@@ -482,7 +504,7 @@ def get_databricks_token(
                 capture_output=True,
                 text=True,
                 env=env,
-                timeout=15,
+                timeout=DATABRICKS_AUTH_CHECK_TIMEOUT_SECONDS,
             )
             debug("auth token", format_subprocess_result(result))
             if result.returncode == 0:
@@ -509,7 +531,7 @@ def get_databricks_token(
                 capture_output=True,
                 text=True,
                 env=env,
-                timeout=30,
+                timeout=DATABRICKS_AUTH_REFRESH_TIMEOUT_SECONDS,
             )
             debug("auth login", format_subprocess_result(reauth))
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:

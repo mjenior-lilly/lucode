@@ -14,7 +14,19 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 from urllib.parse import urlparse
 
-from lucode.config_io import APP_DIR
+from lucode.config import (
+    APP_DIR,
+    CLI_PROFILE_STDERR_PREVIEW_CHARS,
+    CLI_VERSION_PREVIEW_CHARS,
+    DATABRICKS_DIAGNOSTIC_TIMEOUT_SECONDS,
+    DEBUG_BODY_PREVIEW_CHARS,
+    DEBUG_JSON_PREVIEW_CHARS,
+    DEBUG_LOG_BACKUP_COUNT,
+    DEBUG_LOG_MAX_BYTES,
+    HTTP_ERROR_BODY_PREVIEW_CHARS,
+    HTTP_TIMEOUT_SECONDS,
+    SUBPROCESS_OUTPUT_PREVIEW_CHARS,
+)
 from lucode.ui import err_console, normalize_workspace_url
 
 
@@ -40,8 +52,8 @@ def _get_debug_logger() -> logging.Logger | None:
         log_path.parent.mkdir(parents=True, exist_ok=True)
         handler = logging.handlers.RotatingFileHandler(
             log_path,
-            maxBytes=1_000_000,
-            backupCount=3,
+            maxBytes=DEBUG_LOG_MAX_BYTES,
+            backupCount=DEBUG_LOG_BACKUP_COUNT,
             encoding="utf-8",
         )
         handler.setFormatter(
@@ -78,10 +90,10 @@ def format_subprocess_result(
 
     On success, stdout is suppressed (it often contains the access token).
     On failure, scrubbed stdout/stderr are included truncated."""
-    stderr = _scrub_text(result.stderr or "").strip()[:500]
+    stderr = _scrub_text(result.stderr or "").strip()[:SUBPROCESS_OUTPUT_PREVIEW_CHARS]
     if result.returncode == 0:
         return f"rc=0 stderr={stderr!r}"
-    stdout = _scrub_text(result.stdout or "").strip()[:500]
+    stdout = _scrub_text(result.stdout or "").strip()[:SUBPROCESS_OUTPUT_PREVIEW_CHARS]
     return f"rc={result.returncode} stdout={stdout!r} stderr={stderr!r}"
 
 
@@ -141,10 +153,10 @@ def log_auth_diagnostics() -> None:
             check=False,
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=DATABRICKS_DIAGNOSTIC_TIMEOUT_SECONDS,
         )
         version = (version_result.stdout or version_result.stderr or "").strip()
-        debug("databricks --version", version[:200])
+        debug("databricks --version", version[:CLI_VERSION_PREVIEW_CHARS])
     except (OSError, subprocess.TimeoutExpired) as exc:
         debug("databricks --version", f"exception: {type(exc).__name__}: {exc}")
 
@@ -154,17 +166,20 @@ def log_auth_diagnostics() -> None:
             check=False,
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=DATABRICKS_DIAGNOSTIC_TIMEOUT_SECONDS,
         )
         debug(
             "databricks auth profiles",
             f"rc={profiles_result.returncode} "
-            f"stderr={(profiles_result.stderr or '').strip()[:300]!r}",
+            f"stderr={(profiles_result.stderr or '').strip()[:CLI_PROFILE_STDERR_PREVIEW_CHARS]!r}",
         )
         if profiles_result.returncode == 0 and profiles_result.stdout:
             try:
                 payload = json.loads(profiles_result.stdout)
-                debug("profiles json", json.dumps(_scrub_json(payload))[:2000])
+                debug(
+                    "profiles json",
+                    json.dumps(_scrub_json(payload))[:DEBUG_JSON_PREVIEW_CHARS],
+                )
             except json.JSONDecodeError as exc:
                 debug("profiles json", f"decode error: {exc}")
     except (OSError, subprocess.TimeoutExpired) as exc:
@@ -174,7 +189,10 @@ def log_auth_diagnostics() -> None:
     try:
         if cfg_path.is_file():
             raw = cfg_path.read_text(encoding="utf-8", errors="replace")
-            debug(f"databrickscfg ({cfg_path})", _scrub_databrickscfg(raw)[:4000])
+            debug(
+                f"databrickscfg ({cfg_path})",
+                _scrub_databrickscfg(raw)[:DEBUG_BODY_PREVIEW_CHARS],
+            )
         else:
             debug(f"databrickscfg ({cfg_path})", "not present")
     except OSError as exc:
@@ -182,7 +200,7 @@ def log_auth_diagnostics() -> None:
 
 
 def http_get_json(
-    url: str, token: str, *, timeout: float = 10
+    url: str, token: str, *, timeout: float = HTTP_TIMEOUT_SECONDS
 ) -> tuple[dict | list | None, str | None]:
     """GET a JSON endpoint. Returns (payload, None) on success, (None, reason) on failure.
 
@@ -197,7 +215,7 @@ def http_get_json(
             body = response.read().decode("utf-8")
         debug(f"GET {url}", f"HTTP 200, {len(body)} bytes")
         if _debug_enabled():
-            debug("body", body[:4000])
+            debug("body", body[:DEBUG_BODY_PREVIEW_CHARS])
         try:
             return json.loads(body), None
         except json.JSONDecodeError as exc:
@@ -210,11 +228,11 @@ def http_get_json(
             body = ""
         debug(f"GET {url}", f"HTTP {exc.code} {exc.reason}")
         if _debug_enabled() and body:
-            debug("body", body[:4000])
+            debug("body", body[:DEBUG_BODY_PREVIEW_CHARS])
         reason = f"HTTP {exc.code} {exc.reason}"
         # Surface the response body too — gateway auth failures return 400
         # with body `Invalid Token`, which is invisible without this.
-        body_excerpt = body.strip()[:200]
+        body_excerpt = body.strip()[:HTTP_ERROR_BODY_PREVIEW_CHARS]
         if body_excerpt:
             reason = f"{reason}: {body_excerpt}"
         return None, reason
@@ -235,7 +253,7 @@ def _http_send_json(
     token: str,
     payload: dict | None,
     *,
-    timeout: int = 10,
+    timeout: int = HTTP_TIMEOUT_SECONDS,
     allow_empty_body: bool = False,
 ) -> tuple[dict | list | None, str | None]:
     """Send a request that may carry a JSON body, and decode a JSON response.
@@ -257,7 +275,7 @@ def _http_send_json(
             body = response.read().decode("utf-8")
         debug(f"{method} {url}", f"HTTP {response.status}, {len(body)} bytes")
         if _debug_enabled():
-            debug("body", body[:4000])
+            debug("body", body[:DEBUG_BODY_PREVIEW_CHARS])
         if allow_empty_body and not body.strip():
             return None, None
         try:
@@ -272,9 +290,9 @@ def _http_send_json(
             body = ""
         debug(f"{method} {url}", f"HTTP {exc.code} {exc.reason}")
         if _debug_enabled() and body:
-            debug("body", body[:4000])
+            debug("body", body[:DEBUG_BODY_PREVIEW_CHARS])
         reason = f"HTTP {exc.code} {exc.reason}"
-        body_excerpt = body.strip()[:200]
+        body_excerpt = body.strip()[:HTTP_ERROR_BODY_PREVIEW_CHARS]
         if body_excerpt:
             reason = f"{reason}: {body_excerpt}"
         return None, reason
@@ -289,7 +307,7 @@ def _http_send_json(
 
 
 def http_post_json(
-    url: str, token: str, payload: dict, *, timeout: int = 10
+    url: str, token: str, payload: dict, *, timeout: int = HTTP_TIMEOUT_SECONDS
 ) -> tuple[dict | list | None, str | None]:
     """POST a JSON body to an endpoint. Returns (payload, None) on success,
     (None, reason) on failure. Mirrors `http_get_json`."""
@@ -297,7 +315,7 @@ def http_post_json(
 
 
 def http_patch_json(
-    url: str, token: str, payload: dict, *, timeout: int = 10
+    url: str, token: str, payload: dict, *, timeout: int = HTTP_TIMEOUT_SECONDS
 ) -> tuple[dict | list | None, str | None]:
     """PATCH a JSON body to an endpoint. Returns (payload, None) on success,
     (None, reason) on failure."""
@@ -305,7 +323,7 @@ def http_patch_json(
 
 
 def http_delete(
-    url: str, token: str, *, timeout: int = 10
+    url: str, token: str, *, timeout: int = HTTP_TIMEOUT_SECONDS
 ) -> tuple[dict | list | None, str | None]:
     """DELETE a resource. Returns (payload, None) on success, (None, reason) on failure.
 
@@ -316,7 +334,9 @@ def http_delete(
     return _http_send_json("DELETE", url, token, None, timeout=timeout, allow_empty_body=True)
 
 
-def http_get_bytes(url: str, token: str, *, timeout: int = 10) -> tuple[bytes | None, str | None]:
+def http_get_bytes(
+    url: str, token: str, *, timeout: int = HTTP_TIMEOUT_SECONDS
+) -> tuple[bytes | None, str | None]:
     """GET raw bytes. Returns (body, None) on success, (None, reason) on failure.
 
     Like `http_get_json` but leaves the body undecoded, since skill bundles can
@@ -336,7 +356,7 @@ def http_get_bytes(url: str, token: str, *, timeout: int = 10) -> tuple[bytes | 
             detail = ""
         debug(f"GET {url}", f"HTTP {exc.code} {exc.reason}")
         reason = f"HTTP {exc.code} {exc.reason}"
-        excerpt = detail.strip()[:200]
+        excerpt = detail.strip()[:HTTP_ERROR_BODY_PREVIEW_CHARS]
         if excerpt:
             reason = f"{reason}: {excerpt}"
         return None, reason

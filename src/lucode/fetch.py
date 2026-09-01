@@ -8,6 +8,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.parse import urlencode
 
+from lucode.config import DISCOVERY_HTTP_TIMEOUT_SECONDS, SKILL_FETCH_MAX_WORKERS
 from lucode.databricks.auth import get_databricks_token
 from lucode.databricks.transport import http_get_bytes, http_get_json, workspace_hostname
 from lucode.mcp.config import setup_mcp_clients
@@ -26,10 +27,6 @@ from lucode.ui import (
 SKILL_BASE_DIR_NAMES = (".agents/skills",)
 
 SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9-]+$")
-
-# Parallel skill fetches per schema; writes stay sequential (they prompt).
-_MAX_FETCH_WORKERS = 8
-
 
 # --- Download client (UC skills API + Files API) ---------------------------
 
@@ -66,7 +63,9 @@ def list_schema_skills(
     while True:
         if page_token:
             query["page_token"] = page_token
-        payload, reason = http_get_json(f"{base_url}?{urlencode(query)}", token, timeout=30)
+        payload, reason = http_get_json(
+            f"{base_url}?{urlencode(query)}", token, timeout=DISCOVERY_HTTP_TIMEOUT_SECONDS
+        )
         if payload is None:
             return [], reason
         data = payload if isinstance(payload, dict) else {}
@@ -100,7 +99,7 @@ def list_skill_files(
             url = f"{dirs_base}/{directory}"
             if page_token:
                 url = f"{url}?{urlencode({'page_token': page_token})}"
-            payload, reason = http_get_json(url, token, timeout=30)
+            payload, reason = http_get_json(url, token, timeout=DISCOVERY_HTTP_TIMEOUT_SECONDS)
             if payload is None:
                 return [], reason
             data = payload if isinstance(payload, dict) else {}
@@ -124,7 +123,7 @@ def fetch_skill_file(
     """Fetch one skill bundle file's raw bytes from its UC Volume."""
     hostname = workspace_hostname(workspace)
     url = f"https://{hostname}/api/2.0/fs/files/Volumes/{catalog}/{schema}/{leaf}/{relative_path}"
-    return http_get_bytes(url, token, timeout=30)
+    return http_get_bytes(url, token, timeout=DISCOVERY_HTTP_TIMEOUT_SECONDS)
 
 
 def fetch_skill_bundle(
@@ -250,7 +249,7 @@ def _fetch_bundles(
     results: dict[str, tuple[dict[str, bytes] | None, str | None]] = {}
     with (
         progress_bar(f"Fetching skills from {catalog}.{schema}", len(leaves)) as advance,
-        ThreadPoolExecutor(max_workers=min(_MAX_FETCH_WORKERS, len(leaves))) as pool,
+        ThreadPoolExecutor(max_workers=min(SKILL_FETCH_MAX_WORKERS, len(leaves))) as pool,
     ):
         futures = {
             pool.submit(fetch_skill_bundle, workspace, token, catalog, schema, leaf): leaf
@@ -316,7 +315,7 @@ def download_skills(
         )
 
 
-def configure_skills_download_command(
+def configure_fetch_command(
     locations: list[str], *, path: str | None, skills: set[str] | None = None
 ) -> int:
     """Download every skill in each schema to disk and register the skills connection.

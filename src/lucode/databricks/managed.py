@@ -5,6 +5,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode
 
+from lucode.config import DISCOVERY_HTTP_TIMEOUT_SECONDS, HTTP_TIMEOUT_SECONDS
 from lucode.databricks.transport import (
     http_delete,
     http_get_json,
@@ -62,7 +63,7 @@ def list_workspace_budgets(workspace: str, token: str) -> tuple[list[dict], str 
     """
     hostname = workspace_hostname(workspace)
     url = f"https://{hostname}{_WORKSPACE_BUDGETS_API_PATH}"
-    payload, reason = http_get_json(url, token, timeout=30)
+    payload, reason = http_get_json(url, token, timeout=DISCOVERY_HTTP_TIMEOUT_SECONDS)
     if reason is not None:
         return [], reason
     if not isinstance(payload, dict):
@@ -119,7 +120,7 @@ def fetch_managed_coding_agent_configs(workspace: str, token: str) -> tuple[list
     """List the workspace's managed CodingAgentConfig(s) via the AI Gateway."""
     hostname = workspace_hostname(workspace)
     url = f"https://{hostname}{_CODING_AGENT_CONFIGS_API_PATH}"
-    payload, reason = http_get_json(url, token, timeout=30)
+    payload, reason = http_get_json(url, token, timeout=DISCOVERY_HTTP_TIMEOUT_SECONDS)
     if reason is not None:
         return [], reason
     if isinstance(payload, dict):
@@ -141,7 +142,7 @@ def fetch_model_recommendation(workspace: str, token: str) -> tuple[dict, str | 
     """
     hostname = workspace_hostname(workspace)
     url = f"https://{hostname}{_CODING_AGENT_CONFIGS_API_PATH}:recommendModel"
-    payload, reason = http_post_json(url, token, {}, timeout=30)
+    payload, reason = http_post_json(url, token, {}, timeout=DISCOVERY_HTTP_TIMEOUT_SECONDS)
     if reason is not None:
         return {}, reason
     if not isinstance(payload, dict):
@@ -190,7 +191,7 @@ def create_coding_agent_config(
     already defined; callers should update that one instead of creating a second.
     """
     url = _coding_agent_config_url(workspace)
-    payload, reason = http_post_json(url, token, config, timeout=30)
+    payload, reason = http_post_json(url, token, config, timeout=DISCOVERY_HTTP_TIMEOUT_SECONDS)
     if reason is not None:
         return None, reason
     if not isinstance(payload, dict):
@@ -226,7 +227,7 @@ def update_coding_agent_config(
     query = urlencode({"update_mask": ",".join(update_mask)})
     url = f"{_coding_agent_config_url(workspace, name)}?{query}"
     body = {**config, "name": name}
-    payload, reason = http_patch_json(url, token, body, timeout=30)
+    payload, reason = http_patch_json(url, token, body, timeout=DISCOVERY_HTTP_TIMEOUT_SECONDS)
     if reason is not None:
         return None, reason
     if not isinstance(payload, dict):
@@ -241,7 +242,7 @@ def delete_coding_agent_config(workspace: str, token: str, name: str) -> str | N
     payload worth handing back.
     """
     url = _coding_agent_config_url(workspace, name)
-    _, reason = http_delete(url, token, timeout=30)
+    _, reason = http_delete(url, token, timeout=DISCOVERY_HTTP_TIMEOUT_SECONDS)
     return reason
 
 
@@ -252,7 +253,7 @@ def resolve_current_budget_spend(
     workspace: str,
     token: str,
     *,
-    timeout: int = 10,
+    timeout: int = HTTP_TIMEOUT_SECONDS,
 ) -> tuple[tuple[Decimal, Decimal] | None, str | None]:
     """Fetch the caller's coding-agent budget spend and alert threshold.
 

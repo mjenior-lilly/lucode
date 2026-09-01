@@ -7,7 +7,7 @@ import json
 import pytest
 
 import lucode.agents.opencode as opencode
-import lucode.config_io as config_io
+import lucode.config as config
 import lucode.state as state_mod
 from lucode.managed.resolve import (
     managed_default_model,
@@ -105,7 +105,7 @@ class TestStateFileIsNotRewritten:
     @pytest.fixture
     def real_state_file(self, tmp_path, monkeypatch):
         """Redirect state.json and the OpenCode config file into tmp_path, unstubbed."""
-        monkeypatch.setattr(config_io, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config, "APP_DIR", tmp_path)
         monkeypatch.setattr(state_mod, "STATE_PATH", tmp_path / "state.json")
         monkeypatch.setattr(opencode, "OPENCODE_CONFIG_PATH", tmp_path / "opencode.json")
         monkeypatch.setattr(opencode, "OPENCODE_BACKUP_PATH", tmp_path / "backup.json")
@@ -162,7 +162,7 @@ class TestStateFileIsNotRewritten:
         ]
 
     def test_developer_with_no_prior_value_is_not_given_one(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(config_io, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config, "APP_DIR", tmp_path)
         monkeypatch.setattr(state_mod, "STATE_PATH", tmp_path / "state.json")
         state_mod.save_state({"workspace": WORKSPACE})
 
@@ -173,7 +173,7 @@ class TestStateFileIsNotRewritten:
         assert not full["workspaces"][WORKSPACE].get("pi_models")
 
     def test_other_agents_state_is_also_preserved(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(config_io, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config, "APP_DIR", tmp_path)
         monkeypatch.setattr(state_mod, "STATE_PATH", tmp_path / "state.json")
         state_mod.save_state({"workspace": WORKSPACE, "pi_models": ["mine"]})
         managed = {"enabled_agents": {"pi": {"model_config": {"models": ["managed-pi"]}}}}

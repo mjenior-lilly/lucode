@@ -8,7 +8,12 @@ import subprocess
 
 from rich.panel import Panel
 
-from lucode.config_io import ToolSpec, restore_file
+from lucode.config import (
+    AGENT_PACKAGE_INSTALL_TIMEOUT_SECONDS,
+    AGENT_VALIDATION_TIMEOUT_SECONDS,
+    ToolSpec,
+    restore_file,
+)
 from lucode.databricks.auth import install_ai_tools, install_databricks_cli
 from lucode.state import load_state, save_state
 from lucode.telemetry import agent_version
@@ -55,7 +60,11 @@ def _update_installed_tool_binary(tool: str, version: str | None = None) -> bool
         return False
     print_note(f"Updating {spec['display']}...")
     try:
-        subprocess.run(["npm", "install", "-g", target], check=True, timeout=300)
+        subprocess.run(
+            ["npm", "install", "-g", target],
+            check=True,
+            timeout=AGENT_PACKAGE_INSTALL_TIMEOUT_SECONDS,
+        )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
         print_warning(f"Could not update {spec['display']}; continuing.")
         return False
@@ -114,7 +123,11 @@ def install_tool_binary(
     print_section("Bootstrap")
     print_warning(f"`{binary}` was not found. Installing {spec['display']}...")
     try:
-        subprocess.run(["npm", "install", "-g", spec["package"]], check=True, timeout=300)
+        subprocess.run(
+            ["npm", "install", "-g", spec["package"]],
+            check=True,
+            timeout=AGENT_PACKAGE_INSTALL_TIMEOUT_SECONDS,
+        )
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
         message = f"Failed to install {spec['display']} automatically."
         if strict:
@@ -274,7 +287,7 @@ def validate_tool(tool: str) -> tuple[bool, str]:
             check=False,
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=AGENT_VALIDATION_TIMEOUT_SECONDS,
             env=env,
             stdin=subprocess.DEVNULL,
         )

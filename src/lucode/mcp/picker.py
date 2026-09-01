@@ -18,6 +18,7 @@ from questionary.prompts.common import InquirerControl
 from questionary.question import Question
 from questionary.styles import merge_styles_default
 
+from lucode.config import MCP_PICKER_VISIBLE_ROWS
 from lucode.databricks.mcp_discovery import (
     build_mcp_service_url,
 )
@@ -28,8 +29,6 @@ from lucode.mcp.config import (
     servers_by_name,
 )
 from lucode.mcp.resources import catalog_schema_server_name
-
-MCP_PICKER_VISIBLE_ROWS = 10
 
 
 class _Back:

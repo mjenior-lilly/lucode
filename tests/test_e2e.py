@@ -135,12 +135,12 @@ class TestStateRoundTrip:
     def test_configure_shared_state_and_reload(
         self, tmp_path, monkeypatch, e2e_state, e2e_workspace
     ):
-        import lucode.config_io as config_io_mod
+        import lucode.config as config_mod
         import lucode.state as state_mod
         from lucode.state import load_state, save_state
 
         monkeypatch.setattr(state_mod, "STATE_PATH", tmp_path / "state.json")
-        monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
         save_state(e2e_state)
         loaded = load_state()
         assert loaded["workspace"] == e2e_workspace
@@ -184,14 +184,14 @@ class TestOpencodeLaunch:
     def test_launch_opencode_per_model(
         self, tmp_path, monkeypatch, e2e_state, e2e_workspace, e2e_token
     ):
-        import lucode.config_io as config_io_mod
+        import lucode.config as config_mod
         from lucode.agents import opencode
 
         _require_binary("opencode")
         models = self._all_models(e2e_state)
         if not models:
             pytest.skip("No OpenCode models available on this workspace")
-        monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
         xdg = tmp_path / "opencode-xdg"
         config_path = xdg / "opencode" / "opencode.json"
         backup_path = tmp_path / "opencode-config.backup.json"
@@ -263,14 +263,14 @@ class TestPiLaunch:
         return out
 
     def test_launch_pi_per_model(self, tmp_path, monkeypatch, e2e_state, e2e_workspace, e2e_token):
-        import lucode.config_io as config_io_mod
+        import lucode.config as config_mod
         from lucode.agents import pi
 
         _require_binary("pi")
         models = self._all_models(e2e_state)
         if not models:
             pytest.skip("No Pi-compatible models available on this workspace")
-        monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
         pi_home = tmp_path / "pi-home"
         pi_dir = pi_home / ".pi" / "agent"
         config_path = pi_dir / "models.json"

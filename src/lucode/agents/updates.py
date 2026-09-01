@@ -6,6 +6,8 @@ import json
 import shutil
 import subprocess
 
+from lucode.config import AGENT_UPDATE_CHECK_TIMEOUT_SECONDS
+
 
 def available_npm_package_update(package: str) -> tuple[str, str] | None:
     if not shutil.which("npm"):
@@ -15,7 +17,7 @@ def available_npm_package_update(package: str) -> tuple[str, str] | None:
             ["npm", "outdated", "-g", "--json", package],
             capture_output=True,
             text=True,
-            timeout=10,
+            timeout=AGENT_UPDATE_CHECK_TIMEOUT_SECONDS,
             check=False,
         )
     except (FileNotFoundError, subprocess.TimeoutExpired, OSError):

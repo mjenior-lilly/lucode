@@ -246,9 +246,9 @@ class TestMcpServerConfig:
 
     def test_writes_mcp_server_without_clobbering_existing_config(self, tmp_path, monkeypatch):
         import lucode.agents.opencode as oc_mod
-        import lucode.config_io as config_io_mod
+        import lucode.config as config_mod
 
-        monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
         config_file = tmp_path / "opencode.json"
         backup_file = tmp_path / "opencode-backup.json"
         monkeypatch.setattr(oc_mod, "OPENCODE_CONFIG_PATH", config_file)
@@ -278,9 +278,9 @@ class TestMcpServerConfig:
 
     def test_reports_replaced_mcp_server(self, tmp_path, monkeypatch):
         import lucode.agents.opencode as oc_mod
-        import lucode.config_io as config_io_mod
+        import lucode.config as config_mod
 
-        monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
         config_file = tmp_path / "opencode.json"
         backup_file = tmp_path / "opencode-backup.json"
         monkeypatch.setattr(oc_mod, "OPENCODE_CONFIG_PATH", config_file)
@@ -381,9 +381,9 @@ class TestOpencodeValidateCmd:
 class TestWriteToolConfigStaleProviderCleanup:
     def test_stale_providers_removed_before_merge(self, tmp_path, monkeypatch):
         import lucode.agents.opencode as oc_mod
-        import lucode.config_io as config_io_mod
+        import lucode.config as config_mod
 
-        monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
         config_file = tmp_path / "opencode.json"
         backup_file = tmp_path / "opencode-backup.json"
         monkeypatch.setattr(oc_mod, "OPENCODE_CONFIG_PATH", config_file)
@@ -420,9 +420,9 @@ class TestWriteToolConfigStaleProviderCleanup:
 
     def test_config_written_with_correct_model(self, tmp_path, monkeypatch):
         import lucode.agents.opencode as oc_mod
-        import lucode.config_io as config_io_mod
+        import lucode.config as config_mod
 
-        monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
         config_file = tmp_path / "opencode.json"
         backup_file = tmp_path / "opencode-backup.json"
         monkeypatch.setattr(oc_mod, "OPENCODE_CONFIG_PATH", config_file)

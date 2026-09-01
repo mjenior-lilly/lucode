@@ -12,7 +12,7 @@ import stat
 
 import pytest
 
-import lucode.config_io as config_io_mod
+import lucode.config as config_mod
 import lucode.managed.setup as managed_setup_mod
 from lucode.managed.config import (
     AGENT_ENUM_TO_TOOL,
@@ -561,7 +561,7 @@ class TestValidate:
 
 class TestPersistence:
     def test_round_trips_through_disk(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
         monkeypatch.setattr(
             managed_setup_mod, "MANAGED_SETTINGS_PATH", tmp_path / "managed-settings.json"
         )
@@ -571,14 +571,14 @@ class TestPersistence:
 
     def test_stores_the_workspace_alongside_the_manifest(self, tmp_path, monkeypatch):
         path = tmp_path / "managed-settings.json"
-        monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
         monkeypatch.setattr(managed_setup_mod, "MANAGED_SETTINGS_PATH", path)
         save_managed_settings(WORKSPACE, _minimal_manifest())
         assert json.loads(path.read_text())["workspace"] == WORKSPACE
         assert managed_settings_workspace() == WORKSPACE
 
     def test_load_is_workspace_scoped(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
         monkeypatch.setattr(
             managed_setup_mod, "MANAGED_SETTINGS_PATH", tmp_path / "managed-settings.json"
         )
@@ -586,7 +586,7 @@ class TestPersistence:
         assert load_managed_settings("https://other.example.com") is None
 
     def test_load_without_a_workspace_returns_whatever_is_on_disk(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
         monkeypatch.setattr(
             managed_setup_mod, "MANAGED_SETTINGS_PATH", tmp_path / "managed-settings.json"
         )
@@ -594,28 +594,28 @@ class TestPersistence:
         assert load_managed_settings() == _minimal_manifest()
 
     def test_load_returns_none_when_absent(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
         monkeypatch.setattr(managed_setup_mod, "MANAGED_SETTINGS_PATH", tmp_path / "missing.json")
         assert load_managed_settings(WORKSPACE) is None
         assert managed_settings_workspace() is None
 
     def test_dry_run_writes_nothing(self, tmp_path, monkeypatch):
         path = tmp_path / "managed-settings.json"
-        monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
         monkeypatch.setattr(managed_setup_mod, "MANAGED_SETTINGS_PATH", path)
-        monkeypatch.setattr(config_io_mod, "is_dry_run", lambda: True)
+        monkeypatch.setattr(config_mod, "is_dry_run", lambda: True)
         save_managed_settings(WORKSPACE, _minimal_manifest())
         assert not path.exists()
 
     def test_corrupt_file_reads_as_absent(self, tmp_path, monkeypatch):
         path = tmp_path / "managed-settings.json"
         path.write_text("{not json", encoding="utf-8")
-        monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
         monkeypatch.setattr(managed_setup_mod, "MANAGED_SETTINGS_PATH", path)
         assert load_managed_settings(WORKSPACE) is None
 
     def test_serialized_payload_is_json_encodable(self, tmp_path, monkeypatch):
-        monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
         monkeypatch.setattr(
             managed_setup_mod, "MANAGED_SETTINGS_PATH", tmp_path / "managed-settings.json"
         )
@@ -626,7 +626,7 @@ class TestPersistence:
 
     def test_settings_file_is_user_only(self, tmp_path, monkeypatch):
         path = tmp_path / "managed-settings.json"
-        monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
         monkeypatch.setattr(managed_setup_mod, "MANAGED_SETTINGS_PATH", path)
         save_managed_settings(WORKSPACE, _minimal_manifest())
         assert stat.S_IMODE(path.stat().st_mode) & 0o077 == 0

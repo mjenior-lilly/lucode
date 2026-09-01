@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import cast
 
 from lucode.agents import TOOL_SPECS, check_gateway_endpoint
-from lucode.config_io import is_dry_run
+from lucode.config import JSON_INDENT, is_dry_run
 from lucode.databricks.auth import ensure_databricks_auth, get_databricks_token
 from lucode.databricks.managed import (
     create_coding_agent_config,
@@ -658,7 +658,7 @@ def show_command() -> int:
     _render_summary(workspace or "unknown", manifest)
     console.print()
     print_heading("Payload for `lucode apply`")
-    console.print(json.dumps(serialize_managed_config(manifest), indent=2))
+    console.print(json.dumps(serialize_managed_config(manifest), indent=JSON_INDENT))
     return 0
 
 

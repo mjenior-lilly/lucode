@@ -22,7 +22,7 @@ import os
 from pathlib import Path
 from typing import cast
 
-import lucode.config_io as config_io
+import lucode.config as app_config
 from lucode.databricks.auth import get_databricks_token
 from lucode.databricks.managed import (
     fetch_managed_coding_agent_configs,
@@ -30,7 +30,7 @@ from lucode.databricks.managed import (
 )
 from lucode.ui import console, print_warning
 
-MANAGED_STATE_PATH = config_io.APP_DIR / "managed-state.json"
+MANAGED_STATE_PATH = app_config.APP_DIR / "managed-state.json"
 
 # Opt-in switch while the feature is in bug bash: unset means launches ignore managed configs
 # entirely and behave exactly as they did before.
@@ -306,15 +306,18 @@ def save_managed_state(workspace: str, config: dict) -> None:
     would leave the old one on disk to be reapplied after a transient outage.
     """
     payload = {"workspace": workspace, "config": config}
-    if config_io.is_dry_run():
+    if app_config.is_dry_run():
         # Print rather than write, matching how the agent config writers behave under --dry-run.
         console.print(
-            f"\n[bold]\\[dry run] {MANAGED_STATE_PATH}[/bold]\n{json.dumps(payload, indent=2)}\n"
+            f"\n[bold]\\[dry run] {MANAGED_STATE_PATH}[/bold]\n"
+            f"{json.dumps(payload, indent=app_config.JSON_INDENT)}\n"
         )
         return
-    config_io.ensure_parent_dir(MANAGED_STATE_PATH)
+    app_config.ensure_parent_dir(MANAGED_STATE_PATH)
     try:
-        MANAGED_STATE_PATH.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+        MANAGED_STATE_PATH.write_text(
+            json.dumps(payload, indent=app_config.JSON_INDENT) + "\n", encoding="utf-8"
+        )
     except OSError as exc:
         raise RuntimeError(f"Failed to write managed state file: {MANAGED_STATE_PATH}") from exc
     _restrict_permissions(MANAGED_STATE_PATH)
@@ -324,7 +327,7 @@ def _restrict_permissions(path: Path) -> None:
     """Best-effort chmod 0600. No-op where unsupported (e.g. Windows), where the effective
     read-only guarantee is left to a later change."""
     try:
-        os.chmod(path, 0o600)
+        os.chmod(path, app_config.PRIVATE_FILE_MODE)
     except (OSError, NotImplementedError):
         pass
 
@@ -337,7 +340,7 @@ def load_managed_state(workspace: str | None) -> dict | None:
     """
     if not workspace:
         return None
-    data = config_io.read_json_safe(MANAGED_STATE_PATH)
+    data = app_config.read_json_safe(MANAGED_STATE_PATH)
     if data.get("workspace") != workspace:
         return None
     config = data.get("config")
@@ -422,7 +425,10 @@ def _summarize_read_failure(reason: str) -> str:
                 return f"{status.strip()}: {message}"
         return status.strip()
     condensed = " ".join(reason.split())
-    return condensed if len(condensed) <= 160 else condensed[:157] + "..."
+    if len(condensed) <= app_config.MANAGED_ERROR_SUMMARY_CHARS:
+        return condensed
+    ellipsis = "..."
+    return condensed[: app_config.MANAGED_ERROR_SUMMARY_CHARS - len(ellipsis)] + ellipsis
 
 
 def managed_agent_config_enabled() -> bool:

@@ -12,6 +12,12 @@ from decimal import Decimal
 from typing import cast
 
 from lucode.agents import TOOL_SPECS
+from lucode.config import (
+    USAGE_BREAKDOWN_DAYS,
+    USAGE_SUMMARY_DAYS,
+    USAGE_TABLE_MAX_WIDTHS,
+    USAGE_TOP_MODEL_COUNT,
+)
 from lucode.databricks.auth import (
     apply_pat_environment,
     ensure_databricks_auth,
@@ -36,9 +42,6 @@ from lucode.ui import (
     spinner,
     value,
 )
-
-USAGE_BREAKDOWN_DAYS = 7
-USAGE_SUMMARY_DAYS = 30
 
 QUERY_MESSAGE = "Querying system.ai_gateway.usage..."
 STARTUP_MESSAGE = "Starting up warehouse..."
@@ -448,7 +451,7 @@ def render_usage_summary(
         top_models = sorted(
             weekly_model_tokens.items(),
             key=lambda item: (-item[1], item[0].lower()),
-        )[:3]
+        )[:USAGE_TOP_MODEL_COUNT]
         models_text = ", ".join(
             f"{model_name} ({format_token_count(token_total)})"
             for model_name, token_total in top_models
@@ -544,7 +547,7 @@ def usage(warehouse_id: str | None = None) -> int:
     )
 
     table_headers = ["Date", "Day", "Tokens", "Sessions", "Duration", "Models"]
-    table_widths = [8, 5, 10, 8, 8, 24]
+    table_widths = list(USAGE_TABLE_MAX_WIDTHS)
 
     if not configured_tools:
         print_note("No coding agents configured. Run `lucode configure` to set up agents.")

@@ -275,7 +275,7 @@ class TestConfigureSkillsCommand:
         mock_mcp.assert_called_once_with(["a.b", "c.d"])
 
     def test_default_mode_dispatches_download_with_path(self):
-        with patch("lucode.cli.configure_skills_download_command") as mock_download:
+        with patch("lucode.cli.configure_fetch_command") as mock_download:
             result = runner.invoke(
                 app, ["configure", "skills", "--location", "a.b", "--path", "/tmp/skills"]
             )
@@ -283,13 +283,13 @@ class TestConfigureSkillsCommand:
         mock_download.assert_called_once_with(["a.b"], path="/tmp/skills", skills=None)
 
     def test_default_mode_without_path_dispatches_download(self):
-        with patch("lucode.cli.configure_skills_download_command") as mock_download:
+        with patch("lucode.cli.configure_fetch_command") as mock_download:
             result = runner.invoke(app, ["configure", "skills", "--location", "a.b"])
         assert result.exit_code == 0, result.output
         mock_download.assert_called_once_with(["a.b"], path=None, skills=None)
 
     def test_skill_filter_dispatches_download_with_subset(self):
-        with patch("lucode.cli.configure_skills_download_command") as mock_download:
+        with patch("lucode.cli.configure_fetch_command") as mock_download:
             result = runner.invoke(
                 app, ["configure", "skills", "--location", "a.b", "--skill", "my_skill"]
             )
@@ -297,7 +297,7 @@ class TestConfigureSkillsCommand:
         mock_download.assert_called_once_with(["a.b"], path=None, skills={"my_skill"})
 
     def test_skill_filter_parses_comma_list(self):
-        with patch("lucode.cli.configure_skills_download_command") as mock_download:
+        with patch("lucode.cli.configure_fetch_command") as mock_download:
             result = runner.invoke(
                 app, ["configure", "skills", "--location", "a.b", "--skill", "s1, s2"]
             )
@@ -307,7 +307,7 @@ class TestConfigureSkillsCommand:
     def test_skill_with_mcp_exit_1(self):
         with (
             patch("lucode.cli.configure_skills_mcp_command") as mock_mcp,
-            patch("lucode.cli.configure_skills_download_command") as mock_download,
+            patch("lucode.cli.configure_fetch_command") as mock_download,
         ):
             result = runner.invoke(
                 app, ["configure", "skills", "--location", "a.b", "--mcp", "--skill", "my_skill"]
@@ -320,7 +320,7 @@ class TestConfigureSkillsCommand:
     def test_skill_without_location_exit_1(self):
         with (
             patch("lucode.cli.configure_skills_mcp_command") as mock_mcp,
-            patch("lucode.cli.configure_skills_download_command") as mock_download,
+            patch("lucode.cli.configure_fetch_command") as mock_download,
         ):
             result = runner.invoke(app, ["configure", "skills", "--skill", "my_skill"])
         assert result.exit_code == 1
@@ -329,7 +329,7 @@ class TestConfigureSkillsCommand:
         mock_download.assert_not_called()
 
     def test_skill_with_multiple_locations_exit_1(self):
-        with patch("lucode.cli.configure_skills_download_command") as mock_download:
+        with patch("lucode.cli.configure_fetch_command") as mock_download:
             result = runner.invoke(
                 app, ["configure", "skills", "--location", "a.b, c.d", "--skill", "my_skill"]
             )
@@ -341,7 +341,7 @@ class TestConfigureSkillsCommand:
     def test_path_with_mcp_exit_1(self):
         with (
             patch("lucode.cli.configure_skills_mcp_command") as mock_mcp,
-            patch("lucode.cli.configure_skills_download_command") as mock_download,
+            patch("lucode.cli.configure_fetch_command") as mock_download,
         ):
             result = runner.invoke(
                 app, ["configure", "skills", "--location", "a.b", "--mcp", "--path", "/tmp/skills"]
@@ -379,7 +379,7 @@ class TestConfigureSkillsCommand:
     def test_path_without_location_exit_1(self):
         with (
             patch("lucode.cli.configure_skills_mcp_command") as mock_mcp,
-            patch("lucode.cli.configure_skills_download_command") as mock_download,
+            patch("lucode.cli.configure_fetch_command") as mock_download,
         ):
             result = runner.invoke(app, ["configure", "skills", "--path", "/tmp/skills"])
         assert result.exit_code == 1

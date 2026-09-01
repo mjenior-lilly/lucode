@@ -40,9 +40,9 @@ def patch_state_path(tmp_path, monkeypatch):
     fake_state_path = tmp_path / "state.json"
     monkeypatch.setattr(state_mod, "STATE_PATH", fake_state_path)
 
-    import lucode.config_io as config_io_mod
+    import lucode.config as config_mod
 
-    monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+    monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
 
 
 @pytest.fixture(autouse=True)
@@ -140,14 +140,14 @@ class TestSaveLoadRoundTrip:
         assert persisted["agents"]["pi"]["model"] == "system.ai.claude-opus-4-8"
 
     def test_save_respects_dry_run(self):
-        import lucode.config_io as config_io_mod
+        import lucode.config as config_mod
 
-        config_io_mod.set_dry_run(True)
+        config_mod.set_dry_run(True)
         try:
             save_state({"workspace": FAKE_WS})
             assert not state_mod.STATE_PATH.exists()
         finally:
-            config_io_mod.set_dry_run(False)
+            config_mod.set_dry_run(False)
 
     def test_load_state_returns_empty_when_no_workspace(self):
         result = load_state()

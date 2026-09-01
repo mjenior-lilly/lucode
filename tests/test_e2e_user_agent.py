@@ -154,7 +154,7 @@ def _no_request_msg(server: _CaptureServer, result: subprocess.CompletedProcess 
 
 class TestOpencodeUserAgent:
     def test_user_agent_arrives_at_gateway(self, tmp_path, monkeypatch, capture_server):
-        import lucode.config_io as config_io_mod
+        import lucode.config as config_mod
         from lucode.agents import opencode
 
         _require_binary("opencode")
@@ -162,7 +162,7 @@ class TestOpencodeUserAgent:
         opencode_dir = xdg / "opencode"
         opencode_dir.mkdir(parents=True)
         config_path = opencode_dir / "opencode.json"
-        monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
         monkeypatch.setattr(opencode, "OPENCODE_CONFIG_PATH", config_path)
         monkeypatch.setattr(opencode, "OPENCODE_BACKUP_PATH", tmp_path / "opencode.backup.json")
         state = {
@@ -195,14 +195,14 @@ class TestOpencodeUserAgent:
 
 class TestPiUserAgent:
     def test_user_agent_arrives_at_gateway(self, tmp_path, monkeypatch, capture_server):
-        import lucode.config_io as config_io_mod
+        import lucode.config as config_mod
         from lucode.agents import pi
 
         _require_binary("pi")
         pi_home = tmp_path / "pi-home"
         pi_dir = pi_home / ".pi" / "agent"
         config_path = pi_dir / "models.json"
-        monkeypatch.setattr(config_io_mod, "APP_DIR", tmp_path)
+        monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
         monkeypatch.setattr(pi, "PI_lucode_HOME", pi_home)
         monkeypatch.setattr(pi, "PI_CONFIG_DIR", pi_dir)
         monkeypatch.setattr(pi, "PI_CONFIG_PATH", config_path)

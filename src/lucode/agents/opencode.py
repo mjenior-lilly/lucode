@@ -9,8 +9,10 @@ import threading
 
 from lucode.agents.models import opencode_default_model
 from lucode.agents.updates import available_npm_package_update
-from lucode.config_io import (
+from lucode.config import (
     APP_DIR,
+    BACKGROUND_THREAD_JOIN_TIMEOUT_SECONDS,
+    TOKEN_REFRESH_INTERVAL_SECONDS,
     ToolSpec,
     backup_existing_file,
     deep_merge_dict,
@@ -19,7 +21,6 @@ from lucode.config_io import (
 )
 from lucode.databricks.auth import get_databricks_token
 from lucode.databricks.models import (
-    TOKEN_REFRESH_INTERVAL_SECONDS,
     build_opencode_base_urls,
     model_token_limits,
 )
@@ -281,7 +282,7 @@ def launch(state: dict, tool_args: list[str]) -> None:
         returncode = proc.wait()
     finally:
         stop_event.set()
-        refresher.join(timeout=1)
+        refresher.join(timeout=BACKGROUND_THREAD_JOIN_TIMEOUT_SECONDS)
 
     raise SystemExit(returncode)
 
