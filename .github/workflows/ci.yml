@@ -19,6 +19,7 @@ jobs:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
       - run: uv run --locked pytest --ignore=tests/test_e2e.py --ignore=tests/test_e2e_uc.py --ignore=tests/test_e2e_user_agent.py
+      - run: uv run --locked loc --help
 
   e2e:
     runs-on: ubuntu-latest

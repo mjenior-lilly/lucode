@@ -1,6 +1,6 @@
-"""Tests for model_tuning.py: the packaged per-model tuning loader.
+"""Tests for parameters.py: the packaged per-model parameters loader.
 
-The tuning these files carry is gateway-verified and cannot be rediscovered, so
+The parameters these files carry is gateway-verified and cannot be rediscovered, so
 the risks worth testing are that it stops shipping with the package, or that a
 credential or stale endpoint leaks out of it into a live config.
 """
@@ -10,12 +10,12 @@ from __future__ import annotations
 import json
 from importlib import resources
 
-from lucode import model_tuning
+from lucode import parameters
 from lucode.agents import opencode, pi
 
 
 class TestPackagedDefaultsAreImportable:
-    """Guards the failure that made the tuning unreachable for installed users.
+    """Guards the failure that made the parameters unreachable for installed users.
 
     `defaults/` previously sat at the repo root, outside the package, so a
     `uv tool install` shipped none of it and every agent launched with bare
@@ -31,18 +31,18 @@ class TestPackagedDefaultsAreImportable:
             text = (resources.files("lucode.defaults") / name).read_text(encoding="utf-8")
             assert isinstance(json.loads(text), dict), name
 
-    def test_pi_tuning_is_non_empty_for_rendered_providers(self):
+    def test_pi_parameters_is_non_empty_for_rendered_providers(self):
         for provider in pi.PROVIDER_NAMES:
             if provider == "databricks-gemini":
                 continue  # no packaged Gemini inventory yet
-            assert model_tuning.pi_tuned_model_ids(provider), provider
+            assert parameters.pi_params_model_ids(provider), provider
 
-    def test_opencode_tuning_is_non_empty(self):
-        assert model_tuning.opencode_tuned_model_ids("databricks-anthropic")
-        assert model_tuning.opencode_tuned_model_ids("databricks-oss")
+    def test_opencode_parameters_is_non_empty(self):
+        assert parameters.opencode_params_model_ids("databricks-anthropic")
+        assert parameters.opencode_params_model_ids("databricks-oss")
 
     def test_settings_packages_are_exposed(self):
-        packages = model_tuning.pi_settings_packages()
+        packages = parameters.pi_settings_packages()
         assert packages and all(p.startswith("npm:") for p in packages)
 
 
@@ -51,61 +51,61 @@ class TestNoCredentialsOrRoutesLeak:
 
     The committed files previously carried a real workspace host, a placeholder
     API key, and a stale User-Agent. Stripping them at load time is what makes
-    the tuning safe to merge into a live config.
+    the parameters safe to merge into a live config.
     """
 
-    def test_generated_keys_are_stripped_from_pi_tuning(self):
-        for provider in model_tuning._pi_tuning():
-            for model_id in model_tuning.pi_tuned_model_ids(provider):
-                tuning = model_tuning.pi_model_tuning(provider, model_id)
-                assert not (set(tuning) & model_tuning.GENERATED_KEYS), (provider, model_id)
+    def test_generated_keys_are_stripped_from_pi_parameters(self):
+        for provider in parameters._pi_parameters():
+            for model_id in parameters.pi_params_model_ids(provider):
+                params = parameters.pi_parameters(provider, model_id)
+                assert not (set(params) & parameters.GENERATED_KEYS), (provider, model_id)
 
-    def test_no_workspace_host_or_placeholder_in_loaded_tuning(self):
-        blob = json.dumps([model_tuning._pi_tuning(), model_tuning._opencode_tuning()])
+    def test_no_workspace_host_or_placeholder_in_loaded_parameters(self):
+        blob = json.dumps([parameters._pi_parameters(), parameters._opencode_parameters()])
         for forbidden in ("dbc-", "cloud.databricks.com", "CYCLING-API-KEY", "ucode/"):
             assert forbidden not in blob, forbidden
 
-    def test_opencode_options_are_kept_as_tuning(self):
+    def test_opencode_options_are_kept_as_parameters(self):
         # Per-model `options` is providerOptions, not a credential: OpenCode
         # reads toolStreaming from it, so it must survive the strip.
-        tuning = model_tuning.opencode_model_tuning(
+        params = parameters.opencode_parameters(
             "databricks-anthropic", "system.ai.claude-opus-5"
         )
-        assert "limit" in tuning
+        assert "limit" in params
 
 
-class TestTuningIsIsolatedFromCallers:
-    """A caller mutating a returned dict must not corrupt the cached tuning."""
+class TestparametersIsIsolatedFromCallers:
+    """A caller mutating a returned dict must not corrupt the cached parameters."""
 
-    def test_pi_tuning_returns_a_fresh_copy(self):
-        first = model_tuning.pi_model_tuning("databricks-claude", "system.ai.claude-opus-5")
+    def test_pi_parameters_returns_a_fresh_copy(self):
+        first = parameters.pi_parameters("databricks-claude", "system.ai.claude-opus-5")
         first["maxTokens"] = 1
         first.setdefault("thinkingLevelMap", {})["minimal"] = "corrupted"
-        second = model_tuning.pi_model_tuning("databricks-claude", "system.ai.claude-opus-5")
+        second = parameters.pi_parameters("databricks-claude", "system.ai.claude-opus-5")
         assert second["maxTokens"] != 1
         assert second["thinkingLevelMap"].get("minimal") != "corrupted"
 
-    def test_opencode_tuning_returns_a_fresh_copy(self):
-        first = model_tuning.opencode_model_tuning("databricks-oss", "system.ai.glm-5-3-flash")
+    def test_opencode_parameters_returns_a_fresh_copy(self):
+        first = parameters.opencode_parameters("databricks-oss", "system.ai.glm-5-3-flash")
         first["limit"]["output"] = 1
-        second = model_tuning.opencode_model_tuning("databricks-oss", "system.ai.glm-5-3-flash")
+        second = parameters.opencode_parameters("databricks-oss", "system.ai.glm-5-3-flash")
         assert second["limit"]["output"] != 1
 
     def test_unknown_provider_or_model_returns_empty(self):
-        assert model_tuning.pi_model_tuning("nope", "nope") == {}
-        assert model_tuning.opencode_model_tuning("nope", "nope") == {}
+        assert parameters.pi_parameters("nope", "nope") == {}
+        assert parameters.opencode_parameters("nope", "nope") == {}
 
-    def test_pi_tuning_omits_id_so_it_can_be_merged(self):
-        tuning = model_tuning.pi_model_tuning("databricks-claude", "system.ai.claude-opus-5")
-        assert "id" not in tuning
+    def test_pi_parameters_omits_id_so_it_can_be_merged(self):
+        params = parameters.pi_parameters("databricks-claude", "system.ai.claude-opus-5")
+        assert "id" not in params
 
 
-class TestPackagedTuningMatchesRenderedOutput:
-    """The tuning that ships must be the tuning an agent actually receives."""
+class TestPackagedparametersMatchesRenderedOutput:
+    """The parameters that ships must be the parameters an agent actually receives."""
 
     def test_pi_renders_every_packaged_field(self):
         model_id = "system.ai.claude-opus-5"
-        packaged = model_tuning.pi_model_tuning("databricks-claude", model_id)
+        packaged = parameters.pi_parameters("databricks-claude", model_id)
         overlay, _ = pi.render_overlay(
             model_id,
             "tok",
@@ -122,7 +122,7 @@ class TestPackagedTuningMatchesRenderedOutput:
 
     def test_opencode_renders_packaged_limit(self):
         model_id = "system.ai.glm-5-3-flash"
-        packaged = model_tuning.opencode_model_tuning("databricks-oss", model_id)
+        packaged = parameters.opencode_parameters("databricks-oss", model_id)
         overlay, _ = opencode.render_overlay(
             model_id,
             "tok",

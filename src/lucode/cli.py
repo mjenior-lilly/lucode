@@ -27,7 +27,7 @@ from lucode.agents import (
     launch as launch_agent,
 )
 from lucode.agents.pi import PI_SETTINGS_BACKUP_PATH, PI_SETTINGS_PATH
-from lucode.config import is_dry_run, restore_file, set_dry_run
+from lucode.config import restore_file, set_dry_run
 from lucode.databricks.auth import (
     apply_pat_environment,
     ensure_databricks_auth,
@@ -40,7 +40,6 @@ from lucode.databricks.auth import (
     resolve_pat_token,
     run_databricks_login,
 )
-from lucode.databricks.managed import is_workspace_admin
 from lucode.databricks.models import (
     build_shared_base_urls,
     discover_claude_models,
@@ -50,27 +49,6 @@ from lucode.databricks.models import (
     ensure_ai_gateway_v2,
 )
 from lucode.fetch import configure_fetch_command
-from lucode.managed.budget import (
-    budget_usage_percent,
-    recommendation_line,
-    render_budget_panel,
-)
-from lucode.managed.config import (
-    get_model_recommendation,
-    load_managed_state,
-    managed_agent_config_enabled,
-    refresh_managed_config,
-)
-from lucode.managed.resolve import (
-    managed_default_model,
-    managed_enabled_tools,
-    managed_launch_model,
-    managed_supplies_models,
-    managed_unservable_models,
-    recommended_agent,
-    resolve_state,
-)
-from lucode.managed.wizard import apply_command, setup_command, show_command
 from lucode.mcp.commands import configure_mcp_command
 from lucode.mcp.config import MCP_CLIENTS, purge_cross_workspace_mcp_residue, revert_mcp_configs
 from lucode.mcp.skills import SKILLS_MCP_KIND, configure_skills_mcp_command
@@ -107,84 +85,6 @@ _DISCOVERY_CONSUMERS: dict[str, tuple[str, ...]] = {
     "gemini": ("opencode", "pi"),
     "oss": ("opencode",),
 }
-
-
-def _policy_summary_lines(managed: dict) -> list[str]:
-    """Rich-markup lines describing the admin's budget policy, or empty when it sets none."""
-    policy = managed.get("budget_policy")
-    if not isinstance(policy, dict):
-        return []
-    name = str(policy.get("display_name") or "coding-agents-default")
-    lines = [f"[bold]Policy:[/bold] [cyan]{name}[/cyan]"]
-    tiers = policy.get("tiers")
-    for tier in tiers if isinstance(tiers, list) else []:
-        if not isinstance(tier, dict):
-            continue
-        pct_raw = tier.get("spending_percentage")
-        pct = (
-            f"{float(pct_raw) * 100:g}%"
-            if isinstance(pct_raw, int | float) and not isinstance(pct_raw, bool)
-            else "?"
-        )
-        # A tier whose agent enum this build doesn't know is dropped during normalization, so it
-        # arrives unset rather than as a tool name TOOL_SPECS could resolve.
-        agent = tier.get("default_agent")
-        agent_display = TOOL_SPECS[agent]["display"] if agent in TOOL_SPECS else "?"
-        model = str(tier.get("default_model") or "?")
-        lines.append(
-            f"  [dim]·[/dim] [bold]at {pct}[/bold] → {agent_display} · [magenta]{model}[/magenta]"
-        )
-    return lines
-
-
-def _print_managed_summary(managed: dict, state: dict, tool: str) -> None:
-    """Show the developer which of their admin's settings are in force for this launch."""
-    lines = [f"[bold]Workspace:[/bold] [cyan]{state.get('workspace', '?')}[/cyan]"]
-    lines.append(f"[bold]Agent:[/bold] [green]{TOOL_SPECS[tool]['display']}[/green]")
-    enabled = [t for t in (managed.get("enabled_agents") or {}) if t in TOOL_SPECS]
-    if enabled:
-        lines.append(
-            f"[bold]Enabled agents:[/bold] {', '.join(TOOL_SPECS[t]['display'] for t in enabled)}"
-        )
-    model = managed_default_model(managed, tool)
-    if model:
-        lines.append(f"[bold]Model:[/bold] [magenta]{model}[/magenta]")
-    # Always listed, including when empty: "none configured" tells a developer their admin set none,
-    # which a missing row leaves ambiguous. Shown as the admin configured them — registering them
-    # locally is a separate change, hence "pending".
-    mcp_names = [
-        str(server.get("name"))
-        for server in (managed.get("mcp_servers") or [])
-        if isinstance(server, dict) and server.get("name")
-    ]
-    if mcp_names:
-        lines.append(f"[bold]MCPs:[/bold] {', '.join(mcp_names)} [dim](pending)[/dim]")
-    else:
-        lines.append("[bold]MCPs:[/bold] [dim]none configured[/dim]")
-    skill_names = [str(name) for name in ((managed.get("skills") or {}).get("names") or []) if name]
-    if skill_names:
-        lines.append(f"[bold]Skills:[/bold] {', '.join(skill_names)} [dim](pending)[/dim]")
-    else:
-        lines.append("[bold]Skills:[/bold] [dim]none configured[/dim]")
-    lines.extend(_policy_summary_lines(managed))
-    console.print(
-        Panel("\n".join(lines), title="Workspace-managed config", style="green", expand=False)
-    )
-
-
-def _reject_configure_under_managed_config() -> None:
-    """Refuse ``lucode configure`` when the workspace publishes a managed config.
-
-    Configuring locally would be overridden at launch anyway, so it is an error rather than a
-    silently-ignored run. Without a managed config the command still runs unchanged.
-    """
-    if not managed_agent_config_enabled():
-        return
-    if load_managed_state(load_state().get("workspace")):
-        raise RuntimeError(
-            "The lucode configure command is being deprecated. Please run `lucode` to launch "
-            "with your admin's managed config applied"
-        )
 
 
 def _print_discovery_diagnostics(state: dict) -> None:
@@ -778,7 +678,7 @@ def status() -> int:
     print_note(
         "Use `lucode configure skills` to set up Unity Catalog Skills for configured coding tools."
     )
-    print_note("Use `lucode revert` to clear managed configs and restore prior files.")
+    print_note("Use `lucode revert` to clear lucode configs and restore prior files.")
     return 0
 
 
@@ -826,10 +726,6 @@ configure_app = typer.Typer(add_completion=False, no_args_is_help=False)
 app.add_typer(configure_app, name="configure", help="Configure workspace and tool settings.")
 mcp_app = typer.Typer(add_completion=False, no_args_is_help=True)
 app.add_typer(mcp_app, name="mcp", help="MCP servers exposed by lucode.")
-setup_app = typer.Typer(add_completion=False, no_args_is_help=False)
-app.add_typer(
-    setup_app, name="setup", help="Author the workspace's managed coding config (admins only)."
-)
 prompts_app = typer.Typer(add_completion=False, no_args_is_help=True)
 app.add_typer(prompts_app, name="prompts", help="Manage revisioned shared prompts.")
 
@@ -845,7 +741,7 @@ def init_cmd(
     """Initialize append-only Pi preferences with explicit security consent."""
     from lucode.bootstrap import initialize
     from lucode.bootstrap import revert as revert_init
-    from lucode.model_tuning import pi_settings_packages
+    from lucode.parameters import pi_settings_packages
 
     if revert:
         revert_init()
@@ -1018,113 +914,11 @@ def _auto_configure_tool(tool: str) -> None:
         raise RuntimeError(f"{spec['display']} validation failed — config reverted.")
 
 
-def _reject_disabled_agent(managed: dict | None, tool: str) -> None:
-    """Refuse to launch ``tool`` when the managed config enables other agents but not this one.
-
-    ``enabled_agents`` is an allowlist: launching an agent the admin didn't enable would run
-    unmanaged, with none of their models or provider applied. A config that names no agents at all
-    expresses no opinion, so it blocks nothing.
-    """
-    enabled = managed_enabled_tools(managed or {})
-    if enabled and tool not in enabled:
-        names = ", ".join(TOOL_SPECS[name]["display"] for name in enabled)
-        raise RuntimeError(
-            f"Your workspace's managed config doesn't enable {TOOL_SPECS[tool]['display']}. "
-            f"Enabled: {names}."
-        )
-
-
-def _fetch_managed_config(state: dict, *, skip_preflight: bool) -> tuple[dict | None, str | None]:
-    """Return the launch config and any reason its workspace read failed.
-
-    ``skip_preflight`` mirrors the launch flag: it reads the last persisted copy instead of
-    re-fetching, so the config can be stale until a normal launch refreshes it.
-    """
-    if not managed_agent_config_enabled():
-        return None, None
-    if skip_preflight:
-        return load_managed_state(state.get("workspace")) or None, None
-    with spinner("Checking for a managed coding agent config..."):
-        return refresh_managed_config(state)
-
-
-def _note_recommended_agent(recommendation: dict | None, tool: str) -> None:
-    """Say when the budget tier points at a different agent than the one being launched.
-
-    Launching any enabled agent is allowed, so this informs rather than blocks — and explains why
-    the session is not on the tier's model.
-    """
-    # The tier's own agent, not `recommended_agent`'s default_agent fallback: there is nothing to
-    # say when the config's baseline simply differs from what the developer asked for.
-    agent = (recommendation or {}).get("agent")
-    if agent == tool or agent not in TOOL_SPECS:
-        return
-    model = (recommendation or {}).get("model")
-    suffix = f" with {model}" if isinstance(model, str) and model else ""
-    print_note(
-        f"Your budget tier recommends {TOOL_SPECS[agent]['display']}{suffix}; "
-        f"launching {TOOL_SPECS[tool]['display']} as requested."
-    )
-
-
-def _fetch_budget_recommendation(
-    state: dict, managed: dict | None, *, skip_preflight: bool
-) -> dict | None:
-    """The agent and model the caller's budget tier allows, or None when there is no budget to read.
-
-    Enforcement is server-side, so a failed read only costs the recommendation: the config's own
-    ``default_model`` still applies and the launch proceeds.
-    """
-    # --dry-run resolves the agent from the last saved config alone, so it must not reach the
-    # control plane — mirroring the managed-config read, which is likewise skipped under --dry-run.
-    if managed is None or skip_preflight or is_dry_run():
-        return None
-    reason: str | None = None
-    recommendation = None
-    with spinner("Checking your budget..."):
-        try:
-            recommendation, reason = get_model_recommendation(
-                state["workspace"],
-                get_databricks_token(state["workspace"], state.get("profile")),
-            )
-        except (RuntimeError, OSError) as exc:
-            # A token that lapsed since the config refresh — or a Databricks CLI that isn't
-            # installed or reachable — must not block the launch; the config's default_model stands.
-            reason = str(exc)
-    if reason is not None:
-        print_warning(
-            f"Could not check your budget ({reason}); "
-            "using the default model from your workspace's config."
-        )
-    return recommendation
-
-
-def _print_budget_panel(recommendation: dict, tool: str, managed: dict | None = None) -> None:
-    """Show the workspace budget this launch spends against, when one is configured."""
-    agent = recommendation.get("agent")
-    display_agent = TOOL_SPECS[agent]["display"] if agent in TOOL_SPECS else None
-    percent = budget_usage_percent(
-        float(recommendation.get("current_spend") or 0.0),
-        float(recommendation.get("effective_threshold") or 0.0),
-    )
-    line = recommendation_line(display_agent, recommendation.get("model"), percent)
-    panel = render_budget_panel(
-        recommendation,
-        title=f"lucode with {TOOL_SPECS[tool]['display']}",
-        extra_lines=[line] if line else None,
-        managed=managed,
-    )
-    if panel is not None:
-        console.print(panel)
-
-
 def _launch_tool(
     tool_name: str,
     ctx: typer.Context,
     skip_preflight: bool = False,
     workspace: str | None = None,
-    managed: dict | None = None,
-    recommendation: dict | None = None,
 ) -> None:
     try:
         tool = normalize_tool(tool_name)
@@ -1139,56 +933,21 @@ def _launch_tool(
         if needs_auto_configure:
             _auto_configure_tool(tool)
         state = ensure_provider_state(tool)
-        managed_read_reason: str | None = None
-        if managed is None:
-            managed, managed_read_reason = _fetch_managed_config(
-                state, skip_preflight=skip_preflight
-            )
-        _reject_disabled_agent(managed, tool)
         state = configure_shared_state(
             state["workspace"],
             profile=state.get("profile"),
             tools=[tool],
-            skip_model_discovery=managed_supplies_models(managed, tool),
             skip_preflight=skip_preflight,
         )
-        if recommendation is None:
-            recommendation = _fetch_budget_recommendation(
-                state, managed, skip_preflight=skip_preflight
-            )
-        _note_recommended_agent(recommendation, tool)
-        if managed is not None:
-            state = resolve_state(managed, state, tool)
-            print_success("Applied your workspace's managed coding agent config")
-            unservable = managed_unservable_models(managed, tool)
-            if unservable:
-                print_warning(
-                    f"Your workspace's managed config lists no {TOOL_SPECS[tool]['display']}-servable "
-                    f"models ({', '.join(unservable)}); using your discovered models instead."
-                )
-        elif managed_read_reason:
-            print_warning(
-                "Could not read your workspace's managed coding agent config "
-                f"({managed_read_reason}); using your own settings."
-            )
-        elif managed_agent_config_enabled():
-            print_note("No managed coding agent config found; using your own settings")
-        managed_model = (
-            managed_launch_model(managed, recommendation, tool) if managed is not None else None
-        )
-        state, resolved_model = resolve_launch_model(tool, state, managed_model)
+        state, resolved_model = resolve_launch_model(tool, state, None)
         state = configure_tool(tool, state, resolved_model)
         print_section(f"lucode with {TOOL_SPECS[tool]['display']}")
-        if managed is not None:
-            print_kv("Config", "workspace-managed")
         if resolved_model:
             print_kv("Model", resolved_model)
         print_note(
             f"{TOOL_SPECS[tool]['display']} token refresh is managed automatically "
             "every 30 minutes while the session is running."
         )
-        if recommendation is not None:
-            _print_budget_panel(recommendation, tool, managed)
         print_success(f"Starting {TOOL_SPECS[tool]['display']}")
         launch_agent(tool, state, ctx.args)
     except RuntimeError as exc:
@@ -1199,7 +958,7 @@ def _launch_tool(
         raise typer.Exit(130) from None
 
 
-# Launch-only escape hatch for managed/headless launchers (e.g. omnigent) that
+# Launch-only escape hatch for headless launchers (e.g. omnigent) that
 # have already run `lucode configure`: skip the ~5-10s per-launch auth + AI
 # Gateway re-validation. Distinct from the configure-only `--skip-validate`,
 # which skips the model smoke test.
@@ -1208,8 +967,7 @@ SkipPreflightOption = Annotated[
     typer.Option(
         "--skip-preflight",
         help="Skip the per-launch Databricks auth + AI Gateway re-validation, trusting a "
-        "prior `lucode configure`. Launches with your own local settings, ignoring any "
-        "workspace managed config.",
+        "prior `lucode configure`.",
     ),
 ]
 
@@ -1240,125 +998,16 @@ def default(
     ] = False,
     dry_run: Annotated[
         bool,
-        typer.Option(
-            "--dry-run",
-            help="Print config files without writing them. Uses the last saved managed "
-            "config instead of fetching a fresh one.",
-        ),
+        typer.Option("--dry-run", help="Print config files without writing them."),
     ] = False,
     skip_preflight: SkipPreflightOption = False,
     workspace: WorkspaceOption = None,
 ) -> None:
-    """Configure and launch coding agents through Databricks AI Gateway.
-
-    With no subcommand, launches the agent your workspace's managed config selects.
-    """
+    """Configure and launch coding agents through Databricks AI Gateway."""
     if ctx.invoked_subcommand is not None:
         return
     set_dry_run(dry_run)
-    try:
-        _launch_managed_default(
-            ctx, dry_run=dry_run, skip_preflight=skip_preflight, workspace=workspace
-        )
-    except typer.Exit:
-        # `typer.Exit` subclasses RuntimeError, so it has to be re-raised ahead of the handler
-        # below. Otherwise a launch that already reported its own error is followed by
-        # `print_err(str(exc))` printing the exit code — a bare, meaningless "ERROR 1".
-        raise
-    except RuntimeError as exc:
-        print_err(str(exc))
-        raise typer.Exit(1) from None
-
-
-def _launch_managed_default(
-    ctx: typer.Context,
-    *,
-    dry_run: bool,
-    skip_preflight: bool,
-    workspace: str | None,
-) -> None:
-    """Route bare ``lucode`` by whether the workspace publishes a managed config."""
-    if not managed_agent_config_enabled():
-        console.print(ctx.get_help())
-        return
-    if workspace:
-        set_current_workspace(normalize_workspace_url(workspace))
-    install_databricks_cli()
-    state = load_state()
-    current = state.get("workspace")
-    if not current:
-        raise RuntimeError("No workspace configured. Run `lucode configure` first.")
-    apply_pat_environment(state)
-    if skip_preflight:
-        # Deliberately unmanaged, so no config is read at all — and there is none to name an agent.
-        raise RuntimeError(
-            "--skip-preflight launches with your own settings, so `lucode` has no managed config "
-            "to pick an agent from. Run `lucode <agent> --skip-preflight` instead."
-        )
-    # --dry-run avoids the fetch but still applies the last saved config.
-    managed_read_reason: str | None = None
-    if dry_run:
-        managed = load_managed_state(current)
-    else:
-        with spinner("Checking for a managed coding agent config..."):
-            managed, managed_read_reason = refresh_managed_config(state)
-    if not managed:
-        # Only a read that actually reached the workspace can say it publishes no config. Under
-        # --dry-run nothing was fetched, so an empty cache means "not pulled yet" — reporting that
-        # as "no config" would tell an admin their own published config doesn't exist.
-        if dry_run:
-            print_warning(
-                "No managed coding agent config is saved locally yet, so there is nothing to "
-                "dry-run. Run `lucode` without --dry-run to pull your workspace's config first."
-            )
-            return
-        if managed_read_reason:
-            print_warning(
-                "Could not read your workspace's managed coding agent config "
-                f"({managed_read_reason}); unable to choose a default agent. "
-                "Run `lucode <agent>` to continue with your own settings."
-            )
-            return
-        _print_no_managed_config_guidance(current, state.get("profile"))
-        return
-    # The budget tier can move the org to a cheaper agent, so it outranks the config's
-    # default_agent. Fetched here and handed to _launch_tool so it is read once per launch.
-    recommendation = _fetch_budget_recommendation(state, managed, skip_preflight=skip_preflight)
-    tool = recommended_agent(recommendation, managed) or next(
-        iter(managed.get("enabled_agents") or {}), None
-    )
-    if not isinstance(tool, str) or not tool:
-        raise RuntimeError(
-            "Your workspace's managed config names no agent to launch. Ask an admin to set a "
-            "default agent, or run `lucode <agent>` directly."
-        )
-    _print_managed_summary(managed, state, tool)
-    _launch_tool(
-        tool,
-        ctx,
-        skip_preflight=skip_preflight,
-        workspace=workspace,
-        managed=managed,
-        recommendation=recommendation,
-    )
-
-
-def _print_no_managed_config_guidance(workspace: str, profile: str | None) -> None:
-    """Tell an admin how to publish a config, and everyone else who to ask."""
-    print_warning(
-        "No managed coding agent config was found for this workspace; using your local settings."
-    )
-    try:
-        token = get_databricks_token(workspace, profile)
-    except RuntimeError:
-        return
-    with spinner("Checking your workspace permissions..."):
-        is_admin = is_workspace_admin(workspace, token)
-    if is_admin is False:
-        print_note("Ask a workspace admin to set one up with `lucode setup`.")
-    else:
-        # None means the admin check itself failed; point at setup rather than a dead end.
-        print_note("Run `lucode setup` to configure one for your workspace, then `lucode apply`.")
+    console.print(ctx.get_help())
 
 
 @app.command(
@@ -1479,7 +1128,6 @@ def configure(
     prompt_optional_updates = not skip_upgrade
     try:
         install_databricks_cli()
-        _reject_configure_under_managed_config()
         if agent is not None and agents is not None:
             raise RuntimeError("Use either --agent or --agents, not both.")
         if workspaces is not None and profiles is not None:
@@ -1708,85 +1356,6 @@ def configure_skills(
         raise typer.Exit(130) from None
 
 
-@setup_app.callback(invoke_without_command=True)
-def setup(
-    ctx: typer.Context,
-    from_file: Annotated[
-        str | None,
-        typer.Option(
-            "--from-file",
-            help="Skip the interactive flow and load a hand-written managed config (JSON, in "
-            "lucode's manifest shape) instead. Validated before it is saved.",
-        ),
-    ] = None,
-    dry_run: Annotated[
-        bool,
-        typer.Option("--dry-run", help="Walk the flow without writing any files."),
-    ] = False,
-) -> None:
-    """Author the managed coding config for your workspace (workspace admins only)."""
-    if ctx.invoked_subcommand is not None:
-        return
-    set_dry_run(dry_run)
-    # `typer.Exit` subclasses RuntimeError, so it must be raised outside the try — inside, the
-    # `except RuntimeError` below would swallow it and report the exit code as an error message.
-    try:
-        install_databricks_cli()
-        code = setup_command(
-            from_file=from_file,
-            prompt_for_configuration=_prompt_for_configuration,
-            configure_state=configure_shared_state,
-        )
-    except RuntimeError as exc:
-        print_err(str(exc))
-        raise typer.Exit(1) from None
-    except KeyboardInterrupt:
-        print_err("Interrupted.")
-        raise typer.Exit(130) from None
-    if code:
-        raise typer.Exit(code)
-
-
-@setup_app.command("show")
-def setup_show_cmd() -> None:
-    """Print the authored managed config and the payload `lucode apply` would publish."""
-    try:
-        code = show_command()
-    except RuntimeError as exc:
-        print_err(str(exc))
-        raise typer.Exit(1) from None
-    if code:
-        raise typer.Exit(code)
-
-
-@app.command("apply")
-def apply_cmd(
-    yes: Annotated[
-        bool,
-        typer.Option("--yes", "-y", help="Publish without the confirmation prompt."),
-    ] = False,
-) -> None:
-    """Publish this workspace's managed coding config (workspace admins only).
-
-    Always validates the manifest before publishing (and shows what would change, then confirms), so
-    there is no separate dry-run: `lucode setup` only ever writes a valid manifest, and a
-    hand-editing admin sees any error here before anything reaches the workspace.
-    """
-    # See the `setup` callback: `typer.Exit` subclasses RuntimeError, so it must be raised after
-    # the try block or the handler below would report a successful exit as an error.
-    try:
-        install_databricks_cli()
-        code = apply_command(yes=yes, prompt_for_configuration=_prompt_for_configuration)
-    except RuntimeError as exc:
-        print_err(str(exc))
-        raise typer.Exit(1) from None
-    except KeyboardInterrupt:
-        print_err("Interrupted.")
-        raise typer.Exit(130) from None
-    if code:
-        raise typer.Exit(code)
-
-
 @app.command("status")
 def status_cmd() -> None:
     """Show current workspace, tool configs, and saved model selections."""
@@ -1831,6 +1400,13 @@ def upgrade_cmd() -> None:
 
 def main() -> None:
     app()
+
+
+def loc_main() -> None:
+    """Launch OpenCode with unchanged arguments."""
+    args = sys.argv[1:]
+    sys.argv[1:] = ["opencode", *args]
+    app(prog_name="loc")
 
 
 def lpi_main() -> None:

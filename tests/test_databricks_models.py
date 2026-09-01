@@ -455,7 +455,7 @@ class TestClassifyModelFamily:
 
 class TestModelServicesCache:
     """A successful listing is memoized per workspace: several callers want different views of the
-    same paginated walk (bucketed families vs the raw Claude ids), so one `lucode setup` run would
+    same paginated walk (bucketed families vs the raw Claude ids), so one configuration run would
     otherwise page the whole catalog twice."""
 
     @staticmethod

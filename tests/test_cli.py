@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import os
 import re
-from contextlib import nullcontext
 from unittest.mock import patch
 
 import pytest
@@ -126,37 +125,6 @@ class TestVersion:
         result = runner.invoke(app, ["--version"])
         assert result.exit_code == 0
         assert lucode_version() in _strip_ansi(result.output)
-
-
-def _patch_launch(tool: str):
-    """Return a context-manager stack that makes _launch_tool a no-op.
-
-    load_state returns MINIMAL_STATE (workspace + tool already configured) so
-    the auto-configure path is skipped entirely. configure_shared_state is
-    also stubbed to avoid the launch-time refetch hitting the network.
-    """
-    return [
-        patch("lucode.cli.ensure_bootstrap_dependencies"),
-        patch("lucode.cli.load_state", return_value=MINIMAL_STATE),
-        patch(
-            "lucode.cli.ensure_provider_state",
-            return_value=MINIMAL_STATE,
-        ),
-        patch(
-            "lucode.cli.configure_shared_state",
-            return_value=MINIMAL_STATE,
-        ),
-        patch(
-            "lucode.cli.resolve_launch_model",
-            return_value=(MINIMAL_STATE, "databricks-claude-sonnet-4"),
-        ),
-        patch(
-            "lucode.cli.configure_tool",
-            return_value=MINIMAL_STATE,
-        ),
-        patch("lucode.cli._fetch_managed_config", return_value=None),
-        patch("lucode.cli.launch_agent"),
-    ]
 
 
 class TestAuthTokenCommand:
@@ -738,114 +706,6 @@ class TestConfigureSharedStateSkipPreflight:
         assert state["profile"] == "resolved"
 
 
-class TestFetchManagedConfig:
-    """The launch path's managed-config read, which gates both the allowlist and model discovery."""
-
-    @staticmethod
-    def _fetch(state, *, skip_preflight=False):
-        import lucode.cli as cli_mod
-
-        return cli_mod._fetch_managed_config(state, skip_preflight=skip_preflight)
-
-    def test_fetches_fresh_when_enabled(self, monkeypatch):
-        monkeypatch.setenv("ENABLE_MANAGED_AGENT_CONFIG", "1")
-        monkeypatch.setattr(
-            "lucode.cli.refresh_managed_config", lambda state: ({"enabled_agents": {}}, None)
-        )
-        assert self._fetch({"workspace": "https://w"}) == ({"enabled_agents": {}}, None)
-
-    @pytest.mark.parametrize("env_value", [None, "", "0", "off", "no"])
-    def test_disabled_reads_nothing_at_all(self, monkeypatch, env_value):
-        """While the feature is opt-in, a disabled launch must not read the config or the network."""
-        if env_value is None:
-            monkeypatch.delenv("ENABLE_MANAGED_AGENT_CONFIG", raising=False)
-        else:
-            monkeypatch.setenv("ENABLE_MANAGED_AGENT_CONFIG", env_value)
-        for name in ("refresh_managed_config", "load_managed_state"):
-            monkeypatch.setattr(
-                f"lucode.cli.{name}",
-                lambda *a, called=name, **k: pytest.fail(f"{called} must not run when disabled"),
-            )
-        assert self._fetch({"workspace": "https://w"}) == (None, None)
-
-    def test_skip_preflight_reads_the_cache_without_fetching(self, monkeypatch):
-        # Headless launchers pass --skip-preflight to avoid per-launch network calls.
-        monkeypatch.setenv("ENABLE_MANAGED_AGENT_CONFIG", "1")
-        monkeypatch.setattr(
-            "lucode.cli.refresh_managed_config", lambda state: pytest.fail("should not fetch")
-        )
-        monkeypatch.setattr("lucode.cli.load_managed_state", lambda ws: {"enabled_agents": {}})
-        assert self._fetch({"workspace": "https://w"}, skip_preflight=True) == (
-            {"enabled_agents": {}},
-            None,
-        )
-
-    def test_skip_preflight_with_an_empty_cache_is_none(self, monkeypatch):
-        monkeypatch.setenv("ENABLE_MANAGED_AGENT_CONFIG", "1")
-        monkeypatch.setattr("lucode.cli.load_managed_state", lambda ws: {})
-        assert self._fetch({"workspace": "https://w"}, skip_preflight=True) == (None, None)
-
-    def test_bare_launch_reports_read_failure_instead_of_absence(self, monkeypatch, capsys):
-        import lucode.cli as cli_mod
-
-        monkeypatch.setenv("ENABLE_MANAGED_AGENT_CONFIG", "1")
-        monkeypatch.setattr(cli_mod, "install_databricks_cli", lambda: None)
-        monkeypatch.setattr(cli_mod, "load_state", lambda: {"workspace": "https://w"})
-        monkeypatch.setattr(cli_mod, "apply_pat_environment", lambda state: None)
-        monkeypatch.setattr(cli_mod, "spinner", lambda *_: nullcontext())
-        monkeypatch.setattr(
-            cli_mod, "refresh_managed_config", lambda state: (None, "HTTP 500 Server Error")
-        )
-
-        cli_mod._launch_managed_default(
-            object(), dry_run=False, skip_preflight=False, workspace=None
-        )
-
-        output = capsys.readouterr().out
-        assert "Could not read" in output
-        assert "HTTP 500" in output
-        assert "Run `lucode <agent>`" in output
-
-
-class TestConfigureDeprecation:
-    """`lucode configure` is refused once a managed config exists, since the admin's wins anyway."""
-
-    @staticmethod
-    def _reject():
-        import lucode.cli as cli_mod
-
-        cli_mod._reject_configure_under_managed_config()
-
-    def test_blocks_when_a_managed_config_exists(self, monkeypatch):
-        monkeypatch.setenv("ENABLE_MANAGED_AGENT_CONFIG", "1")
-        monkeypatch.setattr("lucode.cli.load_state", lambda: {"workspace": "https://w"})
-        monkeypatch.setattr("lucode.cli.load_managed_state", lambda ws: {"enabled_agents": {}})
-        with pytest.raises(RuntimeError, match="being deprecated") as exc:
-            self._reject()
-        assert "Please run `lucode`" in str(exc.value)
-
-    def test_silent_and_proceeds_without_a_managed_config(self, monkeypatch, capsys):
-        # Setting up a new workspace still goes through `lucode configure`, so say nothing.
-        monkeypatch.setenv("ENABLE_MANAGED_AGENT_CONFIG", "1")
-        monkeypatch.setattr("lucode.cli.load_state", lambda: {"workspace": "https://w"})
-        monkeypatch.setattr("lucode.cli.load_managed_state", lambda ws: None)
-        self._reject()
-        assert capsys.readouterr().out == ""
-
-    @pytest.mark.parametrize("env_value", [None, "", "0"])
-    def test_silent_when_the_env_var_is_off(self, monkeypatch, capsys, env_value):
-        if env_value is None:
-            monkeypatch.delenv("ENABLE_MANAGED_AGENT_CONFIG", raising=False)
-        else:
-            monkeypatch.setenv("ENABLE_MANAGED_AGENT_CONFIG", env_value)
-        monkeypatch.setattr(
-            "lucode.cli.load_managed_state",
-            lambda ws: pytest.fail("must not read the config when disabled"),
-        )
-        self._reject()
-        assert capsys.readouterr().out == ""
-
-
 class TestTwoHarnessSurface:
     def test_root_help_lists_only_surviving_harness_commands(self):
         result = runner.invoke(app, ["--help"])
@@ -856,6 +716,17 @@ class TestTwoHarnessSurface:
         for removed in ("claude", "codex", "gemini", "cursor", "copilot"):
             assert removed not in output.lower()
 
+    def test_bare_lucode_prints_help_and_succeeds(self):
+        result = runner.invoke(app, [])
+        assert result.exit_code == 0
+        assert "Usage:" in _strip_ansi(result.output)
+
+    @pytest.mark.parametrize("tool", ["setup", "apply"])
+    def test_removed_managed_config_command_is_rejected(self, tool):
+        result = runner.invoke(app, [tool])
+        assert result.exit_code != 0
+        assert "No such command" in _strip_ansi(result.output)
+
     @pytest.mark.parametrize("tool", TOOLS)
     def test_surviving_harness_help(self, tool):
         result = runner.invoke(app, [tool, "--help"])
@@ -865,3 +736,43 @@ class TestTwoHarnessSurface:
     def test_removed_harness_command_is_rejected(self, tool):
         result = runner.invoke(app, [tool])
         assert result.exit_code != 0
+
+
+class TestShortcutEntrypoints:
+    def test_loc_routes_unchanged_arguments_to_opencode(self, monkeypatch):
+        import lucode.cli as cli_mod
+        import lucode.prompts as prompts_mod
+
+        calls = []
+        monkeypatch.setattr(cli_mod.sys, "argv", ["loc", "--model", "provider/model"])
+        monkeypatch.setattr(
+            prompts_mod, "update", lambda: pytest.fail("OpenCode must not install Pi prompts")
+        )
+        monkeypatch.setattr(
+            cli_mod,
+            "app",
+            lambda *, prog_name: calls.append((prog_name, cli_mod.sys.argv[1:].copy())),
+        )
+
+        cli_mod.loc_main()
+
+        assert calls == [("loc", ["opencode", "--model", "provider/model"])]
+
+    def test_lpi_updates_prompts_and_routes_unchanged_arguments_to_pi(self, monkeypatch):
+        import lucode.cli as cli_mod
+        import lucode.prompts as prompts_mod
+
+        calls = []
+        updates = []
+        monkeypatch.setattr(cli_mod.sys, "argv", ["lpi", "--model", "provider/model"])
+        monkeypatch.setattr(prompts_mod, "update", lambda: updates.append(True) or {})
+        monkeypatch.setattr(
+            cli_mod,
+            "app",
+            lambda *, prog_name: calls.append((prog_name, cli_mod.sys.argv[1:].copy())),
+        )
+
+        cli_mod.lpi_main()
+
+        assert updates == [True]
+        assert calls == [("lpi", ["pi", "--model", "provider/model"])]

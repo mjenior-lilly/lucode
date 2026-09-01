@@ -37,7 +37,7 @@ DISCOVERY_ERROR_SAMPLE_COUNT = 5
 # ---------------------------------------------------------------------------
 
 # Transport helpers use the short timeout unless a discovery walk explicitly opts into the longer
-# budget. The longer budget is also shared by skill and managed-config API calls.
+# budget. Skill API calls also use the longer budget.
 HTTP_TIMEOUT_SECONDS = 10
 DISCOVERY_HTTP_TIMEOUT_SECONDS = 30
 
@@ -103,9 +103,6 @@ SKILL_FETCH_MAX_WORKERS = 8
 SPINNER_FRAME_INTERVAL_SECONDS = 0.1
 MCP_PICKER_VISIBLE_ROWS = 10
 BUDGET_METER_WIDTH = 28
-
-# Fallback amber point when a workspace policy has no activating tier from which to derive one.
-BUDGET_WARN_FRACTION = 0.8
 
 
 class ToolSpec(TypedDict):

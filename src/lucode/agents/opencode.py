@@ -1,12 +1,12 @@
 """OpenCode agent: writes Databricks-backed providers into native ``opencode.json``.
 
-Existing user model maps define unmanaged membership and retain custom metadata.
-Discovery bootstraps a missing map, while a workspace-managed inventory replaces
+Existing user model maps define membership and retain custom metadata.
+Discovery bootstraps a missing map, while an explicit caller-supplied inventory replaces
 membership exactly. Background refreshes update only existing credential fields.
 
 Per-model tuning (``limit``, per-call ``options``, display ``name``) is layered
-underneath from :mod:`lucode.model_tuning` for any model without an existing
-entry, including models a managed inventory introduces. Discovery returns bare
+underneath from :mod:`lucode.parameters` for any model without an existing
+entry, including models an explicit inventory introduces. Discovery returns bare
 ids, so without that layer OpenCode runs with no context/output caps. A user's
 existing entry always wins, and a gateway-verified per-model ``limit`` outranks
 the family-substring fallback in :func:`model_token_limits`.
@@ -37,7 +37,7 @@ from lucode.databricks.models import (
     build_opencode_base_urls,
     model_token_limits,
 )
-from lucode.model_tuning import opencode_model_tuning
+from lucode.parameters import opencode_parameters
 from lucode.state import mark_tool_managed, save_state
 from lucode.telemetry import agent_version, lucode_version
 from lucode.ui import print_warning
@@ -140,7 +140,7 @@ def render_overlay(
         Membership is whatever the caller was told to serve (a managed
         inventory, the user's own map, or discovery). Tuning for each id is
         resolved most-authoritative-first: the user's existing entry, then the
-        packaged tuning, then nothing. A managed inventory therefore replaces
+        packaged tuning, then nothing. An explicit inventory therefore replaces
         *which* models are served without discarding *how* each is tuned.
         """
         discovered = opencode_models.get(family) or []
@@ -154,7 +154,7 @@ def render_overlay(
             # Tuning goes *underneath* the user's entry: keys they set win, keys
             # they never set are filled from the packaged tuning, so a
             # hand-added bare id still gets its verified limit.
-            entry = opencode_model_tuning(provider_id, model_id)
+            entry = opencode_parameters(provider_id, model_id)
             existing_entry = existing_map.get(model_id)
             if isinstance(existing_entry, dict):
                 entry.update(deepcopy(existing_entry))

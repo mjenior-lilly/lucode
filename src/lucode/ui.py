@@ -192,7 +192,7 @@ def prompt_for_workspace(
     profile_name is ``None`` when the user typed a URL manually.
     """
     console.print()
-    console.print(Panel(description, title="lucode setup", style="bold blue", expand=False))
+    console.print(Panel(description, title="lucode configure", style="bold blue", expand=False))
 
     if profiles:
         choices = [
@@ -231,8 +231,7 @@ def prompt_for_tools(
 
     `available` is [(tool_id, display_name), ...]. Returns the chosen tool_ids.
     When ``preselected`` is None every option is checked by default, so hitting
-    Enter selects everything; pass a subset to pre-check only those (e.g. the
-    agents an existing managed config already enables). Returns [] if the user
+    Enter selects everything; pass a subset to pre-check only those. Returns [] if the user
     submits an empty selection.
     """
     style = questionary.Style(

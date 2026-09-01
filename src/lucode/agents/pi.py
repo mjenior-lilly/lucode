@@ -22,13 +22,13 @@ API-specific `compat` flags align Pi's requests with the gateway routes:
 Additional compat keys may be set manually in models.json; lucode preserves
 them across token refreshes and config rewrites.
 
-Model membership comes from workspace discovery, or from a workspace-managed
-inventory when one is published. Per-model tuning (``contextWindow``,
-``maxTokens``, ``thinkingLevelMap``, per-model ``compat``) is layered underneath
-from :mod:`lucode.model_tuning`, because discovery returns only bare model ids
-and those caps are gateway-verified findings that cannot be rediscovered. An
+Model membership comes from workspace discovery or the user's existing
+inventory. Per-model tuning (``contextWindow``, ``maxTokens``,
+``thinkingLevelMap``, per-model ``compat``) is layered underneath from
+:mod:`lucode.parameters`, because discovery returns only bare model ids and
+those caps are gateway-verified findings that cannot be rediscovered. An
 existing entry in models.json always wins over the packaged tuning, so hand
-edits survive every rewrite, including a managed-inventory rewrite.
+edits survive every rewrite.
 
 The user-maintained ``databricks-mlflow`` provider is not rendered here; lucode
 only refreshes its token and fills in a missing route (see
@@ -66,7 +66,7 @@ from lucode.databricks.models import (
     build_pi_base_urls,
     classify_model_family,
 )
-from lucode.model_tuning import pi_model_tuning
+from lucode.parameters import pi_parameters
 from lucode.state import mark_tool_managed, save_state
 from lucode.telemetry import agent_version, lucode_version
 from lucode.ui import print_warning
@@ -117,7 +117,7 @@ def _tuned_models(
 
     Membership, in precedence order:
 
-    1. ``managed_ids`` when a workspace policy published an inventory,
+    1. ``managed_ids`` when the caller supplies an exact inventory,
     2. otherwise the user's existing ``models`` array, which stays authoritative
        exactly as before this tuning layer existed (an explicitly empty array
        still means "serve nothing"),
@@ -125,9 +125,9 @@ def _tuned_models(
        configured.
 
     Tuning for each id is then resolved most-authoritative-first: the user's own
-    entry, then the packaged tuning in :mod:`lucode.model_tuning`, then nothing
+    entry, then the packaged tuning in :mod:`lucode.parameters`, then nothing
     (a bare ``{"id": ...}``). Hand edits therefore always win, including over a
-    managed rewrite.
+    caller-supplied rewrite.
 
     Returns None only when there is nothing to write, so the caller omits
     ``models`` rather than pinning an empty array Pi would read as "this
@@ -160,7 +160,7 @@ def _tuned_models(
         # and any key they never set is filled from the packaged tuning. So a
         # hand-added bare id still gets its verified caps.
         entry: dict = {"id": model_id}
-        entry.update(pi_model_tuning(provider, model_id))
+        entry.update(pi_parameters(provider, model_id))
         existing_entry = existing_by_id.get(model_id)
         if existing_entry is not None:
             entry.update(deepcopy(existing_entry))
@@ -333,7 +333,7 @@ def _update_provider_api_keys(config: dict, token: str) -> bool:
 
 
 def _managed_provider_models(state: dict) -> dict[str, list[str]] | None:
-    """Translate a managed Pi allowlist into exact native-provider inventories."""
+    """Translate an exact Pi allowlist into native-provider inventories."""
     raw_models = state.get("pi_models")
     if not isinstance(raw_models, list) or not raw_models:
         return None
@@ -354,7 +354,7 @@ def _managed_provider_models(state: dict) -> dict[str, list[str]] | None:
 def _managed_model_families(
     state: dict,
 ) -> tuple[dict[str, str], list[str], list[str]] | None:
-    """Return managed models in Pi's discovery-family shape when any are servable."""
+    """Return explicit models in Pi's discovery-family shape when any are servable."""
     providers = _managed_provider_models(state)
     if providers is None:
         return None

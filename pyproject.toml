@@ -26,14 +26,15 @@ dependencies = [
 ]
 
 [project.scripts]
-lucode = "lucode.cli:main"
+loc = "lucode.cli:loc_main"
 lpi = "lucode.cli:lpi_main"
+lucode = "lucode.cli:main"
 
 [tool.hatch.build.targets.wheel]
 # lucode/defaults/*.json ships automatically as package data under this tree. It
 # carries gateway-verified per-model tuning (context windows, output caps,
 # thinking-level maps) that discovery cannot reproduce, and is read via
-# importlib.resources in lucode/model_tuning.py, so it must stay inside the
+# importlib.resources in lucode/parameters.py, so it must stay inside the
 # package rather than living in a repo-only directory.
 packages = ["src/lucode"]
 

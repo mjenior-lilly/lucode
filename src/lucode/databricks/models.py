@@ -39,7 +39,7 @@ def classify_model_family(model_id: str) -> str | None:
     """Bucket a model FQN into the family lucode keys its state by, or None if unrecognized.
 
     Mirrors how discovery buckets a model-services listing (see `discover_model_services`), so a
-    model named in a managed config lands in the same bucket it would have from discovery. Returns
+    model named in an explicit inventory lands in the same bucket it would have from discovery. Returns
     one of ``ANTHROPIC_FAMILIES``, ``"codex"``, ``"gemini"``, or ``"oss"``. Matching is by name
     substring because neither the listing nor the config records a model's API dialect.
     """
@@ -73,7 +73,7 @@ def model_token_limits(model_id: str) -> dict[str, int] | None:
     """Return ``{"context": ..., "output": ...}`` limits for ``model_id``, or None.
 
     This is the *fallback* for a model with no packaged per-model tuning. An
-    exact-id ``limit`` in ``lucode.model_tuning`` is gateway-verified for that
+    exact-id ``limit`` in ``lucode.parameters`` is gateway-verified for that
     specific model and outranks this table, which matches by family substring
     and so cannot distinguish releases within a family. Callers must not let
     this value overwrite a tuned or user-set ``limit``.
@@ -122,7 +122,7 @@ def _get_model_services_page(
 
 # Successful model-service listings for this process, keyed by workspace. The listing is a paginated
 # walk of the whole metastore catalog, and several callers want different views of the same result,
-# so a single `lucode setup` run would otherwise page it twice. Cached per process, not persisted: a
+# so a single configuration run would otherwise page it twice. Cached per process, not persisted: a
 # long-lived process is not a thing here, and a new model appearing mid-command is not worth a
 # second walk. Failures are never cached, so a transient error still retries.
 _MODEL_SERVICES_CACHE: dict[str, list[str]] = {}

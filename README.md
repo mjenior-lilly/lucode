@@ -50,10 +50,10 @@ recovery; rollback holds its selected revision until explicitly resumed. An
 update failure retains the active revision and warns before launch. Use
 `lucode pi` when no automatic prompt update is wanted.
 
-For OpenCode, run `lucode opencode`. On first launch, `lucode` prompts
-for a workspace, authenticates, discovers models, and writes the agent
-configuration. Later launches reuse the workspace and refresh the token while
-the session runs.
+For OpenCode, run `loc`, or use `lucode opencode` as the long form. On first
+launch, `lucode` prompts for a workspace, authenticates, discovers models, and
+writes the agent configuration. Later launches reuse the workspace and refresh
+the token while the session runs.
 
 ## Configure workspaces and agents
 
@@ -85,28 +85,11 @@ This registers the schema-less skills MCP connection without downloading
 files. The command help covers downloading skills from a Unity Catalog schema
 and exposing schemas through MCP.
 
-## Manage workspace policy
-
-Workspace admins can author a Pi/OpenCode policy interactively:
-
-```bash
-lucode setup
-```
-
-Policies can define model inventories, MCP services, skills, and spend-based
-recommendations. Pi supports Anthropic, OpenAI Responses/GPT, and Gemini
-models. OpenCode supports Anthropic, Gemini, and supported OSS models. Fable
-models are excluded.
-
-The apply command publishes the reviewed policy. It updates only fields owned
-by this client and does not clear unrelated remote tracing configuration.
-
 ## Other commands
 
 | Command | Description |
 |---|---|
 | `lucode status` | Show the current workspace, models, and managed files |
-| `lucode apply` | Publish the workspace policy authored by `lucode setup` |
 | `lucode revert` | Clear saved state and restore backed-up managed files |
 | `lucode configure --dry-run` | Preview configuration writes |
 
@@ -116,13 +99,14 @@ by this client and does not clear unrelated remote tracing configuration.
 |---|---|
 | `$LUCODE_HOME/opencode-xdg/opencode/opencode.json` | OpenCode |
 | `$LUCODE_HOME/pi-home/.pi/agent/models.json` | Pi |
-| `$LUCODE_HOME/managed-settings.json` | Workspace policy authored by `lucode setup` |
 | `$LUCODE_HOME/prompts/` | Validated prompt revisions and lifecycle state |
 
-`lucode` preserves user model inventories unless workspace policy supplies an
-exact managed inventory. Installation never seeds inventories. Pi
+`lucode` preserves user model inventories. Installation never seeds inventories. Pi
 `databricks-mlflow` membership remains user-maintained. Lucode writes private
 state and backups atomically with user-only permissions on POSIX.
+
+Workspace-managed configs are no longer supported. Leftover `managed-*.json` files
+under `$LUCODE_HOME` are inert and may be deleted.
 
 ### Per-model tuning
 
@@ -137,10 +121,10 @@ agent config is written:
 
 These values are verified against the AI Gateway per model, not derived, so they
 cannot be rediscovered if lost. Two rules apply on every write, including a
-re-configure and a managed-policy rewrite:
+re-configure:
 
-- **Membership** comes from discovery, or from a workspace-managed inventory when
-  one is published. Tuning never adds a model the agent was not told to serve.
+- **Membership** comes from discovery or an existing user model inventory. Tuning
+  never adds a model the agent was not told to serve.
 - **Tuning is layered underneath your own config.** Any field set in your
   `models.json` or `opencode.json` wins; only fields you have not set are filled
   in. An explicitly empty model list still means "serve nothing".

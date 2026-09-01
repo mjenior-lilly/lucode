@@ -105,9 +105,8 @@ class TestClosedStdinAborts:
     """Ctrl-D must reach the CLI as an abort, not as a traceback."""
 
     def test_percentage_without_a_default_raises_keyboard_interrupt(self):
-        # `lucode setup`'s tier prompt passes no default. EOFError has no handler above this call —
-        # the setup command catches only RuntimeError and KeyboardInterrupt — so a bare EOFError
-        # reached the admin as a raw traceback.
+        # A percentage prompt without a default must translate closed stdin into the same
+        # interruption signal used by the other interactive prompts.
         with patch("lucode.ui.console.input", side_effect=EOFError):
             with pytest.raises(KeyboardInterrupt):
                 prompt_for_percentage("Tier 1: activates at what percent of budget?")
