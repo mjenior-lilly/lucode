@@ -28,7 +28,6 @@ from lucode.databricks.models import (
     build_tool_base_url,
     ensure_ai_gateway_v2,
 )
-from lucode.databricks.sql import discover_sql_warehouses
 from lucode.databricks.transport import workspace_hostname
 from lucode.ui import normalize_workspace_url
 
@@ -146,16 +145,6 @@ class TestStateRoundTrip:
         assert loaded["workspace"] == e2e_workspace
         assert loaded["claude_models"] == e2e_state["claude_models"]
         assert loaded["base_urls"]["pi"]["openai"] == f"{e2e_workspace}/ai-gateway/codex/v1"
-
-
-class TestSqlWarehouseDiscovery:
-    def test_discovers_http_path(self, e2e_workspace, e2e_token):
-        try:
-            candidates = discover_sql_warehouses(e2e_workspace, e2e_token)
-        except RuntimeError as exc:
-            pytest.skip(f"No SQL warehouse available: {exc}")
-        assert candidates
-        assert all(w.http_path.startswith("/sql/1.0/warehouses/") for w in candidates)
 
 
 def _require_binary(binary: str):

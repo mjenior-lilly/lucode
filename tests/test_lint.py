@@ -33,7 +33,6 @@ def test_direct_runtime_imports_are_declared():
     }
     import_distributions = {
         "anyio": "anyio",
-        "databricks": "databricks-sql-connector",
         "httpx": "httpx",
         "mcp": "mcp",
         "prompt_toolkit": "prompt-toolkit",

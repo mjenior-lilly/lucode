@@ -99,7 +99,6 @@ from lucode.ui import (
     spinner,
     status_badge,
 )
-from lucode.usage import usage as usage_report
 
 _DISCOVERY_CONSUMERS: dict[str, tuple[str, ...]] = {
     "claude": ("opencode", "pi"),
@@ -1750,22 +1749,6 @@ def revert_cmd() -> None:
     """Clear lucode state and restore backed-up agent config files."""
     try:
         revert()
-    except RuntimeError as exc:
-        print_err(str(exc))
-        raise typer.Exit(1) from None
-
-
-@app.command("usage")
-def usage_cmd(
-    warehouse_id: Annotated[
-        str | None,
-        typer.Option("--warehouse-id", help="SQL warehouse to query, instead of discovering one."),
-    ] = None,
-) -> None:
-    """Show Databricks AI Gateway usage summary (last 7 days)."""
-    try:
-        install_databricks_cli()
-        usage_report(warehouse_id=warehouse_id)
     except RuntimeError as exc:
         print_err(str(exc))
         raise typer.Exit(1) from None

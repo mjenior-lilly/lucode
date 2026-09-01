@@ -84,6 +84,15 @@ class TestHelp:
         for tool in TOOLS:
             assert tool in result.output
 
+    def test_usage_command_is_not_registered(self):
+        help_result = runner.invoke(app, ["--help"])
+        assert help_result.exit_code == 0
+        assert re.search(r"(?im)^[│ ]*usage(?:\s|$)", _strip_ansi(help_result.output)) is None
+
+        usage_result = runner.invoke(app, ["usage"])
+        assert usage_result.exit_code != 0
+        assert "No such command 'usage'" in _strip_ansi(usage_result.output)
+
     @pytest.mark.parametrize("tool", TOOLS)
     def test_subcommand_help(self, tool):
         result = runner.invoke(app, [tool, "--help"])

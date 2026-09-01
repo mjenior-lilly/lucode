@@ -36,7 +36,6 @@ DISCOVERY_ERROR_SAMPLE_COUNT = 5
 # budget. The longer budget is also shared by skill and managed-config API calls.
 HTTP_TIMEOUT_SECONDS = 10
 DISCOVERY_HTTP_TIMEOUT_SECONDS = 30
-SQL_WAREHOUSE_DISCOVERY_TIMEOUT_SECONDS = 20
 
 # External commands have purpose-specific budgets: installs and browser login are allowed minutes,
 # while version/auth probes must fail quickly enough for the CLI to recover or report an error.
@@ -96,22 +95,13 @@ SKILL_FETCH_MAX_WORKERS = 8
 # Presentation and reporting defaults
 # ---------------------------------------------------------------------------
 
-# Terminal refresh cadence and default component dimensions. The budget meter is narrower than the
-# plain-text usage meter because it renders inside a bordered panel.
+# Terminal refresh cadence and default component dimensions.
 SPINNER_FRAME_INTERVAL_SECONDS = 0.1
 MCP_PICKER_VISIBLE_ROWS = 10
-TEXT_METER_WIDTH = 30
 BUDGET_METER_WIDTH = 28
 
 # Fallback amber point when a workspace policy has no activating tier from which to derive one.
 BUDGET_WARN_FRACTION = 0.8
-
-# Usage queries cover a month while detailed rows cover one week. Summary model count and column
-# widths keep the report readable in a standard terminal.
-USAGE_BREAKDOWN_DAYS = 7
-USAGE_SUMMARY_DAYS = 30
-USAGE_TOP_MODEL_COUNT = 3
-USAGE_TABLE_MAX_WIDTHS = (8, 5, 10, 8, 8, 24)
 
 
 class ToolSpec(TypedDict):

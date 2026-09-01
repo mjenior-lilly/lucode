@@ -1,0 +1,32 @@
+{
+  "defaultProvider": "databricks-openai",
+  "defaultModel": "system.ai.gpt-5-6-sol",
+  "lastChangelogVersion": "<LATEST-VERSION>",
+  "theme": "dark",
+  "defaultThinkingLevel": "medium",
+  "enabledModels": [
+    "databricks-claude/system.ai.claude-opus-5",
+    "databricks-claude/system.ai.claude-opus-4-8",
+    "databricks-claude/system.ai.claude-sonnet-5",
+    "databricks-claude/system.ai.claude-sonnet-4-6",
+    "databricks-claude/system.ai.claude-haiku-4-5",
+    "databricks-openai/system.ai.gpt-5-6-sol",
+    "databricks-openai/system.ai.gpt-5-6-terra",
+    "databricks-openai/system.ai.gpt-5-6-luna",
+    "databricks-mlflow/system.ai.deepseek-v4-pro-0813",
+    "databricks-mlflow/system.ai.deepseek-v4-flash-0731",
+    "databricks-mlflow/system.ai.glm-5-3-flash",
+    "databricks-mlflow/system.ai.kimi-k3"
+  ],
+    "packages": [
+    "npm:@neilurk12/pi-agent-modes",
+    "npm:pi-skillful",
+    "npm:pi-tracker",
+    "npm:@datspike/pi-inline-slash-extension",
+    "npm:pi-ask-user",
+    "npm:pi-subagents",
+    "npm:pi-web-search"
+  ],
+  "defaultProjectTrust": "always",
+  "hideThinkingBlock": false
+}

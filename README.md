@@ -1,174 +1,113 @@
 # Unity AI Gateway Coding CLI (`lucode`)
 
 `lucode` configures and launches Pi and OpenCode through Databricks AI Gateway.
-It discovers supported Anthropic, OpenAI Responses/GPT, Gemini, and OSS model
-families from your workspace and writes each agent's native configuration.
+It discovers supported models in your workspace and writes each agent's native
+configuration.
 
 ## Requirements
 
 - Python 3.12+
 - `uv`
-- `npm` when Pi or OpenCode must be installed automatically
+- `npm` if Pi or OpenCode must be installed automatically
 - Databricks CLI authentication for the target workspace
 
-## Installation
+## Install
 
 ```bash
 uv tool install git+https://github.com/mjenior-lilly/lucode
 ```
 
-Check the installed revision with `lucode --version`.
-
 ## Launch an agent
 
 ```bash
 lucode pi
-lucode opencode
 ```
 
-Arguments after the command are passed to the selected agent:
-
-```bash
-lucode pi --help
-lucode opencode --help
-```
-
-On first launch, `lucode` prompts for a Databricks workspace, authenticates,
-discovers models, and writes the selected agent's config. Subsequent launches
-reuse the saved workspace and refresh the token while the session runs.
+For OpenCode, replace `pi` with `opencode`. On first launch, `lucode` prompts
+for a workspace, authenticates, discovers models, and writes the agent
+configuration. Later launches reuse the workspace and refresh the token while
+the session runs.
 
 ## Configure workspaces and agents
-
-Configure interactively:
 
 ```bash
 lucode configure
 ```
 
-Or choose agents and workspaces explicitly:
+The interactive flow selects workspaces and agents. Existing Databricks CLI
+profiles can supply workspace hosts. The command help covers non-interactive
+configuration, personal access tokens, validation, and upgrade controls.
 
-```bash
-lucode configure --agents pi,opencode
-lucode configure \
-  --workspaces https://first.databricks.com,https://second.databricks.com \
-  --agents pi,opencode
-```
-
-Existing Databricks CLI profiles can supply workspace hosts:
-
-```bash
-lucode configure --profiles DEFAULT --agents pi,opencode
-```
-
-For a headless profile that uses a personal access token, add `--use-pat`.
-`--skip-validate` writes configuration without sending a test message, and
-`--skip-upgrade` avoids optional agent upgrades:
-
-```bash
-lucode configure --profiles DEFAULT --agents pi,opencode \
-  --use-pat --skip-validate --skip-upgrade
-```
-
-## MCP servers
-
-OpenCode is the supported MCP client. Pi MCP registration is not currently
-provided.
+## Configure MCP servers
 
 ```bash
 lucode configure mcp
-lucode configure --agents opencode --mcp system.ai.slack
 ```
 
-Databricks MCP services are registered as local stdio servers that run
-`lucode mcp-proxy`. The proxy bridges to the workspace's streamable-HTTP MCP
-endpoint and obtains fresh Databricks credentials for requests.
+OpenCode is the supported MCP client. A local proxy obtains fresh credentials
+and forwards requests to the workspace endpoint. Pi MCP registration is not
+provided.
 
-## Skills
+## Configure skills
 
 ```bash
-# Register the schema-less skills MCP connection without downloading files.
 lucode configure skills
-
-# Download all skills from one schema into .agents/skills/.
-lucode configure skills --location main.default --path /abs/project/dir
-
-# Download selected skills.
-lucode configure skills --location main.default --skill my-skill
-
-# Expose one or more schemas through the skills MCP connection.
-lucode configure skills --location main.default,ml.prod --mcp
 ```
 
-When `--path` is omitted, downloaded skills are written under the user's home
-directory. MCP mode downloads no files.
+This registers the schema-less skills MCP connection without downloading
+files. The command help covers downloading skills from a Unity Catalog schema
+and exposing schemas through MCP.
 
-## Workspace-managed configuration
+## Manage workspace policy
 
-Workspace admins can author and publish a Pi/OpenCode policy:
+Workspace admins can author a Pi/OpenCode policy interactively:
 
 ```bash
 lucode setup
-lucode setup show
-lucode setup --dry-run
-lucode setup --from-file ./managed-settings.json
-lucode apply
-lucode apply --yes
 ```
 
-Managed agent inventories are flat model lists. Pi accepts Anthropic,
-OpenAI Responses/GPT, and Gemini models; OpenCode accepts Anthropic, Gemini,
-and supported OSS models. Fable models are excluded. Policies can also include
-MCP services, skills, and spend-based model or agent recommendations.
+Policies can define model inventories, MCP services, skills, and spend-based
+recommendations. Pi supports Anthropic, OpenAI Responses/GPT, and Gemini
+models. OpenCode supports Anthropic, Gemini, and supported OSS models. Fable
+models are excluded.
 
-`lucode apply` updates only fields owned by this client. In particular, it does
-not clear a remote tracing field during an unrelated update.
+The apply command publishes the reviewed policy. It updates only fields owned
+by this client and does not clear unrelated remote tracing configuration.
 
 ## Other commands
 
 | Command | Description |
 |---|---|
 | `lucode status` | Show the current workspace, models, and managed files |
-| `lucode usage` | Show Pi/OpenCode AI Gateway usage and available budget spend |
-| `lucode usage --warehouse-id <id>` | Query a specific SQL warehouse |
+| `lucode apply` | Publish the workspace policy authored by `lucode setup` |
 | `lucode revert` | Clear saved state and restore backed-up managed files |
 | `lucode configure --dry-run` | Preview configuration writes |
 
-## Managed local files
+## Managed files
 
 | File | Owner |
 |---|---|
 | `~/.config/opencode/opencode.json` | OpenCode |
-| `~/.lucode/pi-home/.pi/agent/models.json` | Pi (launched with this directory explicitly selected as its agent configuration) |
-| `~/.lucode/managed-settings.json` | Managed policy authored by `lucode setup` |
+| `~/.lucode/pi-home/.pi/agent/models.json` | Pi |
+| `~/.lucode/managed-settings.json` | Workspace policy authored by `lucode setup` |
 
-OpenCode keeps user model inventories in its native `opencode.json`; Pi keeps
-them in its native `models.json`. lucode preserves those inventories during
-ordinary configuration and discovery unless workspace policy supplies an exact
-managed inventory.
+`lucode` preserves user model inventories unless workspace policy supplies an
+exact managed inventory. It backs up existing agent files before overwriting
+them, and `lucode revert` restores those backups.
 
-Existing agent files are backed up before `lucode` overwrites them. `lucode
-revert` restores those backups. Stale state keys from older clients are ignored
-at runtime and are not destructively migrated.
-
-## Development
+## Develop
 
 ```bash
 uv run pytest
-uv run ruff check .
 ```
 
-Run the live-workspace coverage when credentials are available:
-
-```bash
-lucode_TEST_WORKSPACE=<workspace-url> \
-  uv run pytest tests/test_e2e.py tests/test_e2e_uc.py tests/test_e2e_user_agent.py -v
-```
+Live-workspace tests require credentials. See the test suite for the relevant
+environment variables and targets.
 
 ## Documentation and security
 
 - [Databricks AI Gateway overview](https://docs.databricks.com/aws/en/ai-gateway/overview-beta)
 - [Databricks CLI authentication](https://docs.databricks.com/aws/en/dev-tools/cli/authentication)
-- [Monitor AI Gateway usage](https://docs.databricks.com/aws/en/ai-gateway/configure-ai-gateway-endpoints#track-usage-of-an-endpoint)
 
 Report security vulnerabilities to security@databricks.com rather than opening
 a public issue. See [LICENSE.md](./LICENSE.md) and [NOTICE.md](./NOTICE.md).

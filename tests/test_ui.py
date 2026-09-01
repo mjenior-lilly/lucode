@@ -3,24 +3,17 @@
 from __future__ import annotations
 
 import io
-from datetime import timedelta
-from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
 from rich.console import Console
 
 from lucode.ui import (
-    format_duration,
-    format_meter,
-    format_token_count,
-    format_usd,
     normalize_workspace_url,
     prompt_for_percentage,
     prompt_for_text,
     prompt_for_workspace,
     prompt_yes_no_default,
-    render_box_table,
     status_badge,
 )
 
@@ -164,52 +157,6 @@ class TestNormalizeWorkspaceUrl:
             normalize_workspace_url("   ")
 
 
-class TestFormatTokenCount:
-    def test_small(self):
-        assert format_token_count(0) == "0"
-        assert format_token_count(999) == "999"
-
-    def test_thousands(self):
-        assert format_token_count(1000) == "1.0K"
-        assert format_token_count(1500) == "1.5K"
-        assert format_token_count(999_999) == "1000.0K"
-
-    def test_millions(self):
-        assert format_token_count(1_000_000) == "1.0M"
-        assert format_token_count(2_500_000) == "2.5M"
-
-    def test_billions(self):
-        assert format_token_count(1_000_000_000) == "1.0B"
-        assert format_token_count(2_200_000_000) == "2.2B"
-
-
-class TestFormatDuration:
-    def test_none_returns_dash(self):
-        assert format_duration(None) == "-"
-
-    def test_zero_returns_dash(self):
-        assert format_duration(timedelta(seconds=0)) == "-"
-
-    def test_negative_returns_dash(self):
-        assert format_duration(timedelta(seconds=-5)) == "-"
-
-    def test_minutes(self):
-        assert format_duration(timedelta(minutes=5)) == "5m"
-        assert format_duration(timedelta(minutes=59)) == "59m"
-
-    def test_hours_fractional(self):
-        result = format_duration(timedelta(hours=1, minutes=30))
-        assert result == "1.5h"
-
-    def test_hours_rounded(self):
-        result = format_duration(timedelta(hours=10))
-        assert result == "10h"
-
-    def test_days(self):
-        result = format_duration(timedelta(hours=48))
-        assert result == "2.0d"
-
-
 class TestStatusBadge:
     def test_ok_is_green(self):
         assert "green" in status_badge("OK", "ok")
@@ -227,32 +174,6 @@ class TestStatusBadge:
 
     def test_text_is_included(self):
         assert "MyText" in status_badge("MyText", "ok")
-
-
-class TestRenderBoxTable:
-    def test_produces_box_chars(self):
-        result = render_box_table(["A", "B"], [["x", "y"]])
-        assert "┏" in result
-        assert "┗" not in result  # bottom uses └
-        assert "└" in result
-        assert "A" in result
-        assert "x" in result
-
-    def test_empty_rows(self):
-        result = render_box_table(["H1", "H2"], [])
-        assert "H1" in result
-        assert "H2" in result
-
-    def test_cell_wraps_when_max_width_set(self):
-        long_text = "a" * 30
-        result = render_box_table(["Col"], [[long_text]], max_widths=[10])
-        # wrapped lines mean the original 30-char string is broken up
-        lines = result.splitlines()
-        assert any(len(line.strip()) <= 14 for line in lines)
-
-    def test_dash_for_empty_cell(self):
-        result = render_box_table(["A"], [[""]])
-        assert "-" in result
 
 
 class TestPromptForWorkspace:
@@ -299,42 +220,3 @@ class TestPromptForWorkspace:
             url, profile = prompt_for_workspace("desc", profiles=None)
         assert url == "https://example.databricks.com"
         assert profile is None
-
-
-class TestFormatUsd:
-    def test_rounds_to_cents(self):
-        assert format_usd(Decimal("12.345")) == "$12.35"
-        assert format_usd(Decimal("12.344")) == "$12.34"
-
-    def test_pads_to_two_decimals(self):
-        assert format_usd(Decimal("5")) == "$5.00"
-
-    def test_thousands_separator(self):
-        assert format_usd(Decimal("1234567.5")) == "$1,234,567.50"
-
-    def test_zero(self):
-        assert format_usd(Decimal("0")) == "$0.00"
-
-
-class TestFormatMeter:
-    def test_empty(self):
-        assert format_meter(0.0, width=10) == "[" + "\u2591" * 10 + "]"
-
-    def test_full(self):
-        assert format_meter(1.0, width=10) == "[" + "\u2588" * 10 + "]"
-
-    def test_half(self):
-        assert format_meter(0.5, width=10) == "[" + "\u2588" * 5 + "\u2591" * 5 + "]"
-
-    def test_tiny_nonzero_fills_one_cell(self):
-        assert format_meter(0.001, width=10) == "[\u2588" + "\u2591" * 9 + "]"
-
-    def test_clamps_above_one(self):
-        assert format_meter(2.5, width=10) == "[" + "\u2588" * 10 + "]"
-
-    def test_clamps_below_zero(self):
-        assert format_meter(-1.0, width=10) == "[" + "\u2591" * 10 + "]"
-
-    def test_width_is_constant(self):
-        for fraction in (0.0, 0.13, 0.5, 0.99, 1.0):
-            assert len(format_meter(fraction)) == 32

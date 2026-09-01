@@ -1,0 +1,114 @@
+{
+  "model": "databricks-anthropic/system.ai.claude-opus-5",
+  "provider": {
+    "databricks-anthropic": {
+      "npm": "@ai-sdk/anthropic",
+      "options": {
+        "baseURL": "https://dbc-769ba6b9-6999.cloud.databricks.com/ai-gateway/anthropic/v1",
+        "apiKey": "<CYCLING-API-KEY>",
+        "headers": {
+          "Authorization": "Bearer <CYCLING-API-KEY>"
+        }
+      },
+      "models": {
+        "system.ai.claude-haiku-4-5": {
+          "name": "Haiku 4.5",
+          "options": {
+            "toolStreaming": false
+          },
+          "limit": {
+            "context": 200000,
+            "output": 64000
+          }
+        },
+        "system.ai.claude-opus-5": {
+          "name": "Opus 5",
+          "options": {
+            "toolStreaming": false
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 128000
+          }
+        },
+        "system.ai.claude-opus-4-8": {
+          "name": "Opus 4.8",
+          "options": {
+            "toolStreaming": false
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 128000
+          }
+        },
+        "system.ai.claude-sonnet-5": {
+          "name": "Sonnet 5",
+          "options": {
+            "toolStreaming": false
+          },
+          "limit": {
+            "context": 1000000,
+            "output": 128000
+          }
+        },
+        "system.ai.claude-sonnet-4-6": {
+          "name": "Sonnet 4.6",
+          "options": {
+            "toolStreaming": false
+          },
+          "limit": {
+            "context": 200000,
+            "output": 64000
+          }
+        }
+      }
+    },
+    "databricks-oss": {
+      "npm": "@ai-sdk/openai",
+      "options": {
+        "baseURL": "https://dbc-769ba6b9-6999.cloud.databricks.com/ai-gateway/mlflow/v1",
+        "apiKey": "<CYCLING-API-KEY>",
+        "headers": {
+          "Authorization": "Bearer <CYCLING-API-KEY>"
+        }
+      },
+      "models": {
+        "system.ai.llama-4-maverick": {
+          "name": "Llama-4 Maverick",
+          "limit": {
+            "context": 1000000,
+            "output": 128000
+          }
+        },
+        "system.ai.deepseek-v4-pro-0813": {
+          "name": "Deepseek-V4 Pro",
+          "limit": {
+            "context": 1000000,
+            "output": 128000
+          }
+        },
+        "system.ai.deepseek-v4-flash-0731": {
+          "name": "Deepseek-V4 Flash",
+          "limit": {
+            "context": 1000000,
+            "output": 128000
+          }
+        },
+        "system.ai.glm-5-3-flash": {
+          "name": "GLM-5.3 Flash",
+          "limit": {
+            "context": 1000000,
+            "output": 128000
+          }
+        },
+        "system.ai.kimi-k3": {
+          "name": "Kimi K3",
+          "limit": {
+            "context": 1000000,
+            "output": 128000
+          }
+        }
+      }
+    }
+  }
+}

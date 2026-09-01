@@ -1,0 +1,271 @@
+{
+  "model": "databricks-claude/system.ai.claude-opus-5",
+  "providers": {
+    "databricks-claude": {
+      "baseUrl": "https://dbc-769ba6b9-6999.cloud.databricks.com/ai-gateway/anthropic",
+      "api": "anthropic-messages",
+      "apiKey": "<CYCLING-API-KEY>",
+      "authHeader": true,
+      "compat": {
+        "supportsEagerToolInputStreaming": false,
+        "supportsStrictTools": true
+      },
+      "headers": {
+        "User-Agent": "ucode/0.1.0+31.g4ad17f2 pi/0.84.3"
+      },
+      "models": [
+        {
+          "id": "system.ai.claude-haiku-4-5",
+          "name": "Haiku 4.5",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "low": null,
+            "medium": null,
+            "high": null,
+            "standard": "medium",
+            "extended": "high"
+          },
+          "contextWindow": 200000,
+          "maxTokens": 64000,
+          "input": [
+            "text",
+            "image"
+          ]
+        },
+        {
+          "id": "system.ai.claude-opus-5",
+          "name": "Opus 5",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "max": "max"
+          },
+          "compat": {
+            "forceAdaptiveThinking": true
+          },
+          "contextWindow": 1000000,
+          "maxTokens": 128000,
+          "input": [
+            "text",
+            "image"
+          ]
+        },
+        {
+          "id": "system.ai.claude-opus-4-8",
+          "name": "Opus 4.8",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "max": "max"
+          },
+          "compat": {
+            "forceAdaptiveThinking": true
+          },
+          "contextWindow": 1000000,
+          "maxTokens": 128000,
+          "input": [
+            "text",
+            "image"
+          ]
+        },
+        {
+          "id": "system.ai.claude-sonnet-5",
+          "name": "Sonnet 5",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "max": "max"
+          },
+          "compat": {
+            "forceAdaptiveThinking": true
+          },
+          "contextWindow": 1000000,
+          "maxTokens": 128000,
+          "input": [
+            "text",
+            "image"
+          ]
+        },
+        {
+          "id": "system.ai.claude-sonnet-4-6",
+          "name": "Sonnet 4.6",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "max": "max"
+          },
+          "compat": {
+            "forceAdaptiveThinking": true
+          },
+          "contextWindow": 200000,
+          "maxTokens": 64000,
+          "input": [
+            "text",
+            "image"
+          ]
+        }
+      ]
+    },
+    "databricks-openai": {
+      "baseUrl": "https://dbc-769ba6b9-6999.cloud.databricks.com/ai-gateway/codex/v1",
+      "api": "openai-responses",
+      "apiKey": "<CYCLING-API-KEY>",
+      "authHeader": true,
+      "compat": {
+        "supportsStrictMode": true
+      },
+      "headers": {
+        "User-Agent": "ucode/0.1.0+31.g4ad17f2 pi/0.84.3"
+      },
+      "models": [
+        {
+          "id": "system.ai.gpt-5-6-luna",
+          "name": "GPT-5.6 Luna",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "light": "light",
+            "xhigh": "xhigh",
+            "max": "max"
+          },
+          "contextWindow": 1000000,
+          "maxTokens": 128000,
+          "input": [
+            "text",
+            "image"
+          ]
+        },
+        {
+          "id": "system.ai.gpt-5-6-sol",
+          "name": "GPT-5.6 Sol",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "light": "light",
+            "xhigh": "xhigh",
+            "max": "max"
+          },
+          "contextWindow": 1000000,
+          "maxTokens": 128000,
+          "input": [
+            "text",
+            "image"
+          ]
+        },
+        {
+          "id": "system.ai.gpt-5-6-terra",
+          "name": "GPT-5.6 Terra",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "light": "light",
+            "xhigh": "xhigh",
+            "max": "max"
+          },
+          "contextWindow": 1000000,
+          "maxTokens": 128000,
+          "input": [
+            "text",
+            "image"
+          ]
+        }
+      ]
+    },
+    "databricks-mlflow": {
+      "baseUrl": "https://dbc-769ba6b9-6999.cloud.databricks.com/ai-gateway/mlflow/v1",
+      "api": "openai-completions",
+      "apiKey": "<CYCLING-API-KEY>",
+      "authHeader": true,
+      "headers": {
+        "User-Agent": "ucode/0.1.0+31.g4ad17f2 pi/0.84.3"
+      },
+      "models": [
+        {
+          "id": "system.ai.llama-4-maverick",
+          "name": "Llama-4 Maverick",
+          "reasoning": true,
+          "contextWindow": 1000000,
+          "maxTokens": 128000,
+          "input": [
+            "text",
+            "image"
+          ]
+        },
+        {
+          "id": "system.ai.deepseek-v4-pro-0813",
+          "name": "Deepseek-V4 Pro",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "low": null,
+            "medium": null,
+            "high": "high",
+            "xhigh": null,
+            "max": "max"
+          },
+          "contextWindow": 1000000,
+          "maxTokens": 128000,
+          "input": [
+            "text",
+            "image"
+          ]
+        },
+        {
+          "id": "system.ai.deepseek-v4-flash-0731",
+          "name": "Deepseek-V4 Flash",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "low": null,
+            "medium": null,
+            "high": "high",
+            "xhigh": null,
+            "max": "max"
+          },
+          "contextWindow": 1000000,
+          "maxTokens": 128000,
+          "input": [
+            "text",
+            "image"
+          ]
+        },
+        {
+          "id": "system.ai.glm-5-3-flash",
+          "name": "GLM-5.3 Flash",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "off": null,
+            "minimal": null,
+            "low": "low",
+            "medium": null,
+            "high": "high",
+            "xhigh": null,
+            "max": "max"
+          },
+          "contextWindow": 1000000,
+          "maxTokens": 128000,
+          "input": [
+            "text",
+            "image"
+          ]
+        },
+        {
+          "id": "system.ai.kimi-k3",
+          "name": "Kimi K3",
+          "reasoning": true,
+          "thinkingLevelMap": {
+            "minimal": null,
+            "max": "max"
+          },
+          "contextWindow": 1000000,
+          "maxTokens": 128000,
+          "input": [
+            "text",
+            "image"
+          ]
+        }
+      ]
+    }
+  }
+}

@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode
 
-from lucode.config import DISCOVERY_HTTP_TIMEOUT_SECONDS, HTTP_TIMEOUT_SECONDS
+from lucode.config import DISCOVERY_HTTP_TIMEOUT_SECONDS
 from lucode.databricks.transport import (
     http_delete,
     http_get_json,
@@ -244,49 +243,3 @@ def delete_coding_agent_config(workspace: str, token: str, name: str) -> str | N
     url = _coding_agent_config_url(workspace, name)
     _, reason = http_delete(url, token, timeout=DISCOVERY_HTTP_TIMEOUT_SECONDS)
     return reason
-
-
-CODING_AGENT_RECOMMEND_MODEL_PATH = "/api/ai-gateway/v2/coding-agent-configs:recommendModel"
-
-
-def resolve_current_budget_spend(
-    workspace: str,
-    token: str,
-    *,
-    timeout: int = HTTP_TIMEOUT_SECONDS,
-) -> tuple[tuple[Decimal, Decimal] | None, str | None]:
-    """Fetch the caller's coding-agent budget spend and alert threshold.
-
-    Reads them off `recommendModel`, which returns the spend its model
-    recommendation was based on. `available_models` is empty since we want the
-    spend, not the recommendation.
-
-    Returns `((spend, threshold), None)` or `(None, reason)`. Absence is
-    routine — the endpoint needs a per-org SAFE flag (default off) and a
-    coding-agent config — so it never raises.
-    """
-    url = f"https://{workspace_hostname(workspace)}{CODING_AGENT_RECOMMEND_MODEL_PATH}"
-    payload, reason = http_post_json(url, token, {"available_models": []}, timeout=timeout)
-    if payload is None:
-        return None, reason or "unknown error"
-    if not isinstance(payload, dict):
-        return None, "response was not a JSON object"
-
-    # Per the server's BudgetSpend.fromProto, a spend with no threshold to
-    # measure against counts as no spend.
-    spend = _parse_decimal(payload.get("current_spend"))
-    threshold = _parse_decimal(payload.get("effective_threshold"))
-    if spend is None or threshold is None:
-        return None, "workspace reported no coding-agent budget spend"
-    return (spend, threshold), None
-
-
-def _parse_decimal(value: object) -> Decimal | None:
-    if isinstance(value, str) and value.strip():
-        try:
-            return Decimal(value.strip())
-        except InvalidOperation:
-            return None
-    if isinstance(value, int):
-        return Decimal(value)
-    return None

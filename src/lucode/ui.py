@@ -4,13 +4,10 @@ from __future__ import annotations
 
 import itertools
 import sys
-import textwrap
 import threading
 import time
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from datetime import timedelta
-from decimal import ROUND_HALF_UP, Decimal
 
 import questionary
 from rich.console import Console
@@ -18,11 +15,7 @@ from rich.markup import escape
 from rich.panel import Panel
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn
 
-from lucode.config import (
-    BACKGROUND_THREAD_JOIN_TIMEOUT_SECONDS,
-    SPINNER_FRAME_INTERVAL_SECONDS,
-    TEXT_METER_WIDTH,
-)
+from lucode.config import BACKGROUND_THREAD_JOIN_TIMEOUT_SECONDS, SPINNER_FRAME_INTERVAL_SECONDS
 
 console = Console(highlight=False)
 err_console = Console(stderr=True, highlight=False)
@@ -177,89 +170,6 @@ def progress_bar(description: str, total: int) -> Iterator[Callable[[], None]]:
     ) as progress:
         task = progress.add_task(description, total=total)
         yield lambda: progress.advance(task)
-
-
-def render_box_table(
-    headers: list[str],
-    rows: list[list[str]],
-    max_widths: list[int] | None = None,
-) -> str:
-    wrapped_rows: list[list[list[str]]] = []
-    widths = [len(header) for header in headers]
-
-    for row in rows:
-        wrapped_row: list[list[str]] = []
-        for index, cell in enumerate(row):
-            raw_cell = cell if cell else "-"
-            width_limit = max_widths[index] if max_widths and index < len(max_widths) else None
-            if width_limit:
-                cell_lines = textwrap.wrap(raw_cell, width=width_limit) or ["-"]
-            else:
-                cell_lines = raw_cell.splitlines() or ["-"]
-            wrapped_row.append(cell_lines)
-            widths[index] = max(widths[index], max(len(line) for line in cell_lines))
-        wrapped_rows.append(wrapped_row)
-
-    top = "┏" + "┳".join("━" * (w + 2) for w in widths) + "┓"
-    header = "┃ " + " ┃ ".join(headers[i].ljust(widths[i]) for i in range(len(headers))) + " ┃"
-    middle = "┡" + "╇".join("━" * (w + 2) for w in widths) + "┩"
-    bottom = "└" + "┴".join("─" * (w + 2) for w in widths) + "┘"
-
-    body_lines: list[str] = []
-    for wrapped_row in wrapped_rows:
-        row_height = max(len(cell_lines) for cell_lines in wrapped_row)
-        for line_index in range(row_height):
-            body_lines.append(
-                "│ "
-                + " │ ".join(
-                    (
-                        wrapped_row[col][line_index] if line_index < len(wrapped_row[col]) else ""
-                    ).ljust(widths[col])
-                    for col in range(len(headers))
-                )
-                + " │"
-            )
-
-    return "\n".join([top, header, middle, *body_lines, bottom])
-
-
-def format_token_count(token_count: int) -> str:
-    value_float = float(token_count)
-    if token_count >= 1_000_000_000:
-        return f"{value_float / 1_000_000_000:.1f}B"
-    if token_count >= 1_000_000:
-        return f"{value_float / 1_000_000:.1f}M"
-    if token_count >= 1_000:
-        return f"{value_float / 1_000:.1f}K"
-    return str(token_count)
-
-
-def format_usd(amount: Decimal) -> str:
-    return f"${amount.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP):,}"
-
-
-def format_meter(fraction: float, width: int = TEXT_METER_WIDTH) -> str:
-    """Text meter for `fraction` of a whole, clamped to [0, 1]."""
-    clamped = min(max(fraction, 0.0), 1.0)
-    filled = int(clamped * width)
-    # A small-but-real fraction shouldn't read as empty.
-    if clamped > 0:
-        filled = max(filled, 1)
-    return "[" + "█" * filled + "░" * (width - filled) + "]"
-
-
-def format_duration(duration_value: timedelta | None) -> str:
-    if not duration_value or duration_value.total_seconds() <= 0:
-        return "-"
-    total_minutes = duration_value.total_seconds() / 60
-    if total_minutes < 60:
-        return f"{int(round(total_minutes))}m"
-    total_hours = total_minutes / 60
-    if total_hours < 10:
-        return f"{total_hours:.1f}h"
-    if total_hours < 24:
-        return f"{round(total_hours):.0f}h"
-    return f"{total_hours / 24:.1f}d"
 
 
 def normalize_workspace_url(workspace: str) -> str:

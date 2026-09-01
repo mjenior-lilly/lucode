@@ -9,9 +9,3 @@ This Software includes software developed at Databricks (<https://www.databricks
 This Software contains code from the following open source projects, licensed under the [MIT license](https://opensource.org/license/mit):
 
 - **[pypa/setuptools](https://github.com/pypa/setuptools)** — Copyright setuptools Authors.
-
----
-
-This Software contains code from the following open source projects, licensed under the [Apache 2.0 license](https://www.apache.org/licenses/LICENSE-2.0):
-
-- **[databricks/databricks-sql-python](https://github.com/databricks/databricks-sql-python/)** — Copyright 2022 Databricks, Inc.
