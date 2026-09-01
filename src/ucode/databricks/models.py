@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import cast
 from urllib.parse import urlencode
 
-from ucode.databricks.transport import _debug, _http_get_json, workspace_hostname
+from ucode.databricks.transport import debug, http_get_json, workspace_hostname
 
 AI_GATEWAY_V2_DOCS_URL = "https://docs.databricks.com/aws/en/ai-gateway/overview-beta"
 TOKEN_REFRESH_INTERVAL_SECONDS = 1800
@@ -105,15 +105,15 @@ def _get_model_services_page(
     """GET one model-services page, retrying on failure.
 
     The endpoint intermittently 499/504s under load; a retry usually succeeds.
-    Returns the same (payload, reason) shape as ``_http_get_json`` — the last
+    Returns the same (payload, reason) shape as ``http_get_json`` — the last
     attempt's result when all retries are exhausted."""
     payload: dict | list | None = None
     reason: str | None = None
     for attempt in range(retries):
-        payload, reason = _http_get_json(url, token, timeout=30)
+        payload, reason = http_get_json(url, token, timeout=30)
         if payload is not None:
             return payload, None
-        _debug("model-services page", f"attempt {attempt + 1}/{retries} failed: {reason}")
+        debug("model-services page", f"attempt {attempt + 1}/{retries} failed: {reason}")
     return payload, reason
 
 
@@ -143,8 +143,8 @@ def list_model_services(
     Pages through ``/api/2.1/unity-catalog/model-services`` (metastore scope)
     with a bounded ``page_size`` (the endpoint 499s without one) and returns the
     de-duplicated, sorted list of ``system.ai.<model-name>`` ids. Returns
-    (ids, reason); reason is None on success, otherwise it describes why the
-    list is empty (HTTP/network error or no services).
+    (ids, reason); reason is None on a complete walk. A partial list is returned
+    with a reason describing why pagination stopped and is never cached.
 
     A successful result is memoized per workspace for the life of the process; pass
     ``use_cache=False`` to force a fresh walk.
@@ -166,8 +166,6 @@ def list_model_services(
         url = f"https://{hostname}/api/2.1/unity-catalog/model-services?{urlencode(params)}"
         payload, reason = _get_model_services_page(url, token)
         if payload is None:
-            # Surface the failure only if we have nothing yet; a mid-pagination
-            # blip still returns whatever we collected.
             last_reason = reason
             break
         data = cast(dict, payload) if isinstance(payload, dict) else {}
@@ -181,14 +179,18 @@ def list_model_services(
             last_reason = None
             break
         if page_token in seen_tokens:
+            last_reason = "model-services pagination repeated a page token"
             break
         seen_tokens.add(page_token)
+    else:
+        if page_token:
+            last_reason = f"model-services pagination exceeded {max_pages} pages"
 
     deduped = sorted(set(ids))
     if deduped:
-        if use_cache:
+        if use_cache and last_reason is None:
             _MODEL_SERVICES_CACHE[workspace] = list(deduped)
-        return deduped, None
+        return deduped, last_reason
     return [], last_reason or "model-services listing returned no models"
 
 
@@ -206,8 +208,8 @@ def discover_model_services(
     - ``gemini_models`` is the list of ``system.ai.*gemini-*`` ids, newest first.
     - ``oss_models`` is the list of OSS-model ``system.ai.*`` ids.
 
-    ``reason`` is None on success, else explains why nothing was found. Family
-    bucketing is by name substring because the model-services API does not
+    ``reason`` is None after a complete walk; partial family buckets may be
+    returned with a reason. Family bucketing is by name substring because the model-services API does not
     expose per-model API dialects.
     """
     ids, reason = list_model_services(workspace, token)
@@ -240,7 +242,7 @@ def discover_model_services(
                 f"claude/gpt/gemini/oss families (got: {sample})"
             ),
         )
-    return claude_models, codex_models, gemini_models, oss_models, None
+    return claude_models, codex_models, gemini_models, oss_models, reason
 
 
 def discover_claude_models(workspace: str, token: str) -> tuple[dict[str, str], str | None]:
@@ -251,7 +253,7 @@ def discover_claude_models(workspace: str, token: str) -> tuple[dict[str, str], 
     matching the expected naming convention).
     """
     hostname = workspace_hostname(workspace)
-    payload, reason = _http_get_json(f"https://{hostname}/ai-gateway/anthropic/v1/models", token)
+    payload, reason = http_get_json(f"https://{hostname}/ai-gateway/anthropic/v1/models", token)
     if payload is None:
         return {}, reason
 
@@ -323,7 +325,7 @@ def discover_endpoints_with_api_type(
     alphabetical ordering of the returned names.
     """
     hostname = workspace_hostname(workspace)
-    payload, reason = _http_get_json(
+    payload, reason = http_get_json(
         f"https://{hostname}/api/2.0/serving-endpoints:foundation-models", token
     )
     if payload is None:
@@ -386,7 +388,7 @@ def ensure_ai_gateway_v2(workspace: str, token: str) -> None:
     """
     hostname = workspace_hostname(workspace)
     url = f"https://{hostname}/api/ai-gateway/v2/endpoints?page_size=1"
-    payload, reason = _http_get_json(url, token)
+    payload, reason = http_get_json(url, token)
     if payload is not None:
         return
     reason_str = reason or "unknown error"

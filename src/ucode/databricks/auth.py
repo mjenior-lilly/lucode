@@ -14,9 +14,9 @@ from pathlib import Path
 from typing import Literal, overload
 
 from ucode.databricks.transport import (
-    _debug,
-    _format_subprocess_result,
-    _log_auth_diagnostics,
+    debug,
+    format_subprocess_result,
+    log_auth_diagnostics,
 )
 from ucode.ui import (
     print_kv,
@@ -211,7 +211,7 @@ def has_valid_databricks_auth(workspace: str, profile: str | None = None) -> boo
     # `databricks auth token` shell-out (which only knows user-OAuth).
     if os.environ.get("DATABRICKS_BEARER", "").strip():
         return True
-    _log_auth_diagnostics()
+    log_auth_diagnostics()
     # Mirror run_databricks_login: when ~/.databrickscfg has multiple
     # profiles for the same host, `databricks auth token --host …` refuses
     # to disambiguate without --profile, so resolve it from the host here.
@@ -235,16 +235,16 @@ def has_valid_databricks_auth(workspace: str, profile: str | None = None) -> boo
             env=env,
             timeout=15,
         )
-        _debug(
+        debug(
             "has_valid_databricks_auth",
-            _format_subprocess_result(result),
+            format_subprocess_result(result),
         )
         if result.returncode != 0:
             return False
         data = json.loads(result.stdout or "{}")
         return bool(data.get("access_token"))
     except (json.JSONDecodeError, OSError, subprocess.TimeoutExpired) as exc:
-        _debug("has_valid_databricks_auth", f"exception: {type(exc).__name__}: {exc}")
+        debug("has_valid_databricks_auth", f"exception: {type(exc).__name__}: {exc}")
         return False
 
 
@@ -266,15 +266,15 @@ def list_profile_entries() -> list[dict]:
             timeout=20,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        _debug("list_profile_entries", f"subprocess error: {type(exc).__name__}: {exc}")
+        debug("list_profile_entries", f"subprocess error: {type(exc).__name__}: {exc}")
         return []
     if result.returncode != 0:
-        _debug("list_profile_entries", _format_subprocess_result(result))
+        debug("list_profile_entries", format_subprocess_result(result))
         return []
     try:
         profiles = json.loads(result.stdout or "{}").get("profiles") or []
     except json.JSONDecodeError as exc:
-        _debug("list_profile_entries", f"json decode error: {exc.msg}")
+        debug("list_profile_entries", f"json decode error: {exc.msg}")
         return []
     return [p for p in profiles if isinstance(p, dict)]
 
@@ -296,7 +296,7 @@ def get_databricks_profiles() -> list[tuple[str, str]]:
             continue
         out.setdefault(host, name)
 
-    _debug(
+    debug(
         "get_databricks_profiles",
         f"returned={len(out)} total={len(profiles)} pat={pat}",
     )
@@ -446,10 +446,10 @@ def get_databricks_token(
     # same short-circuit baked into ``build_auth_shell_command``.
     bearer = os.environ.get("DATABRICKS_BEARER", "").strip()
     if bearer:
-        _debug("get_databricks_token", "using DATABRICKS_BEARER env var")
+        debug("get_databricks_token", "using DATABRICKS_BEARER env var")
         return bearer
 
-    _log_auth_diagnostics()
+    log_auth_diagnostics()
     # See has_valid_databricks_auth: resolve the profile from the host when
     # the caller didn't supply one, so duplicate-host cfgs don't break us.
     profile = profile or find_profile_name_for_host(workspace)
@@ -467,7 +467,7 @@ def get_databricks_token(
     if force_refresh:
         cmd.append("--force-refresh")
 
-    _debug(
+    debug(
         "get_databricks_token.env",
         "set="
         + ",".join(sorted(k for k in env if k.startswith("DATABRICKS_") or k in {"BUNDLE_PROFILE"}))
@@ -484,17 +484,17 @@ def get_databricks_token(
                 env=env,
                 timeout=15,
             )
-            _debug("auth token", _format_subprocess_result(result))
+            debug("auth token", format_subprocess_result(result))
             if result.returncode == 0:
                 return json.loads(result.stdout or "{}").get("access_token", "")
         except (subprocess.TimeoutExpired, json.JSONDecodeError) as exc:
-            _debug("auth token", f"exception: {type(exc).__name__}: {exc}")
+            debug("auth token", f"exception: {type(exc).__name__}: {exc}")
         return ""
 
     token = _fetch()
     if not token:
         # Session may have expired — attempt non-interactive re-auth and retry once.
-        _debug("auth token", "empty on first fetch; attempting auth login --no-browser")
+        debug("auth token", "empty on first fetch; attempting auth login --no-browser")
         try:
             reauth = run(
                 [
@@ -511,9 +511,9 @@ def get_databricks_token(
                 env=env,
                 timeout=30,
             )
-            _debug("auth login", _format_subprocess_result(reauth))
+            debug("auth login", format_subprocess_result(reauth))
         except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
-            _debug("auth login", f"exception: {type(exc).__name__}: {exc}")
+            debug("auth login", f"exception: {type(exc).__name__}: {exc}")
         token = _fetch()
 
     if not token:

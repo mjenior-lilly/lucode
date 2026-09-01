@@ -68,9 +68,7 @@ class TestListMcpServices:
                 },
             ]
         }
-        monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, timeout=30: (payload, None)
-        )
+        monkeypatch.setattr(db_mod, "http_get_json", lambda url, token, timeout=30: (payload, None))
 
         names, reason = db_mod.list_mcp_services(WS, "token")
 
@@ -86,9 +84,7 @@ class TestListMcpServices:
                 },
             ]
         }
-        monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, timeout=30: (payload, None)
-        )
+        monkeypatch.setattr(db_mod, "http_get_json", lambda url, token, timeout=30: (payload, None))
 
         names, reason = db_mod.list_mcp_services(WS, "token")
 
@@ -110,9 +106,7 @@ class TestListMcpServices:
                 },
             ]
         }
-        monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, timeout=30: (payload, None)
-        )
+        monkeypatch.setattr(db_mod, "http_get_json", lambda url, token, timeout=30: (payload, None))
 
         names, _reason = db_mod.list_mcp_services(WS, "token")
 
@@ -126,9 +120,7 @@ class TestListMcpServices:
                 {"name": "mcp-services/temp.erni.github_mcp"},
             ]
         }
-        monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, timeout=30: (payload, None)
-        )
+        monkeypatch.setattr(db_mod, "http_get_json", lambda url, token, timeout=30: (payload, None))
 
         names, _reason = db_mod.list_mcp_services(WS, "token")
 
@@ -137,7 +129,7 @@ class TestListMcpServices:
     def test_http_failure_propagates_reason(self, monkeypatch):
         monkeypatch.setattr(
             db_mod,
-            "_http_get_json",
+            "http_get_json",
             lambda url, token, timeout=30: (None, "HTTP 500 Server Error"),
         )
 
@@ -148,7 +140,7 @@ class TestListMcpServices:
 
     def test_empty_payload_is_successful_with_no_reason(self, monkeypatch):
         monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, timeout=30: ({"mcp_services": []}, None)
+            db_mod, "http_get_json", lambda url, token, timeout=30: ({"mcp_services": []}, None)
         )
 
         names, reason = db_mod.list_mcp_services(WS, "token")
@@ -163,7 +155,7 @@ class TestListMcpServices:
             captured["url"] = url
             return {"mcp_services": []}, None
 
-        monkeypatch.setattr(db_mod, "_http_get_json", fake_get)
+        monkeypatch.setattr(db_mod, "http_get_json", fake_get)
 
         db_mod.list_mcp_services(WS, "token", parent="main.schema3")
 
@@ -177,9 +169,7 @@ class TestListMcpServices:
                 {"name": "mcp-services/system.ai.github"},
             ]
         }
-        monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, timeout=30: (payload, None)
-        )
+        monkeypatch.setattr(db_mod, "http_get_json", lambda url, token, timeout=30: (payload, None))
 
         names, reason = db_mod.list_mcp_services(WS, "token", parent="main.schema3")
 
@@ -189,7 +179,7 @@ class TestListMcpServices:
     def test_http_404_reason_surfaces_for_invalid_parent(self, monkeypatch):
         monkeypatch.setattr(
             db_mod,
-            "_http_get_json",
+            "http_get_json",
             lambda url, token, timeout=30: (None, "HTTP 404 Not Found: NOT_FOUND"),
         )
 
@@ -329,7 +319,7 @@ class TestDiscoveryDeadlines:
     ):
         monkeypatch.setattr(
             db_mod,
-            "_http_get_json",
+            "http_get_json",
             lambda *args, **kwargs: pytest.fail("expired pagination must not start a request"),
         )
         result, reason = discover(WS, "tok", deadline_seconds=-1)
@@ -343,7 +333,7 @@ class TestDiscoveryDeadlines:
             calls.append(timeout)
             return {"items": [{"name": "first"}], "next_page_token": "next"}, None
 
-        monkeypatch.setattr(db_mod, "_http_get_json", page)
+        monkeypatch.setattr(db_mod, "http_get_json", page)
         items, reason = db_mod._paginated_json_items(
             "https://example/items",
             "tok",
@@ -355,11 +345,55 @@ class TestDiscoveryDeadlines:
         assert calls == []
 
 
+class TestDiscoveryWorkerFailures:
+    @staticmethod
+    def _catalog_pages(url, token, **kwargs):
+        if url.endswith("/catalogs"):
+            return [{"name": "main"}], None
+        return [{"name": "default"}], None
+
+    def test_vector_worker_exception_is_returned_as_reason(self, monkeypatch):
+        def pages(url, token, **kwargs):
+            if url.endswith("/endpoints"):
+                return [{"name": "endpoint"}], None
+            raise RuntimeError("vector boom")
+
+        monkeypatch.setattr(db_mod, "_paginated_json_items", pages)
+        result, reason = db_mod.list_vector_search_catalog_schemas(WS, "tok")
+        assert result == []
+        assert reason is not None and "vector boom" in reason
+        assert "worker failed" in reason
+
+    def test_function_probe_exception_is_returned_as_reason(self, monkeypatch):
+        monkeypatch.setattr(db_mod, "_paginated_json_items", self._catalog_pages)
+        monkeypatch.setattr(
+            db_mod,
+            "_schema_has_user_function",
+            lambda *args: (_ for _ in ()).throw(RuntimeError("function boom")),
+        )
+        result, reason = db_mod.list_uc_functions_catalog_schemas(WS, "tok")
+        assert result == []
+        assert reason is not None and "function boom" in reason
+        assert "worker failed" in reason
+
+    def test_service_probe_exception_is_returned_as_reason(self, monkeypatch):
+        monkeypatch.setattr(db_mod, "_paginated_json_items", self._catalog_pages)
+        monkeypatch.setattr(
+            db_mod,
+            "list_mcp_services",
+            lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("service boom")),
+        )
+        result, reason = db_mod.list_all_mcp_services(WS, "tok")
+        assert result == []
+        assert reason is not None and "service boom" in reason
+        assert "worker failed" in reason
+
+
 class TestListAllMcpServices:
     """Workspace-wide walk: catalogs -> schemas -> per-schema mcp-services."""
 
     def _fake_http(self, catalogs, schemas_by_catalog, services_by_schema):
-        """Route `_http_get_json` by URL to the right stubbed payload."""
+        """Route `http_get_json` by URL to the right stubbed payload."""
 
         def fake_get(url, token, timeout=30):
             if "unity-catalog/catalogs" in url:
@@ -384,7 +418,7 @@ class TestListAllMcpServices:
     def test_aggregates_services_across_catalogs_and_schemas(self, monkeypatch):
         monkeypatch.setattr(
             db_mod,
-            "_http_get_json",
+            "http_get_json",
             self._fake_http(
                 catalogs=["mycat", "other"],
                 schemas_by_catalog={"mycat": ["myschema", "information_schema"], "other": ["ops"]},
@@ -408,7 +442,7 @@ class TestListAllMcpServices:
     def test_reports_progress_per_schema(self, monkeypatch):
         monkeypatch.setattr(
             db_mod,
-            "_http_get_json",
+            "http_get_json",
             self._fake_http(
                 catalogs=["mycat"],
                 schemas_by_catalog={"mycat": ["a", "b"]},
@@ -434,7 +468,7 @@ class TestListAllMcpServices:
     def test_skips_internal_catalogs(self, monkeypatch):
         monkeypatch.setattr(
             db_mod,
-            "_http_get_json",
+            "http_get_json",
             self._fake_http(
                 catalogs=["system", "hive_metastore", "samples", "__databricks_internal"],
                 schemas_by_catalog={},
@@ -449,7 +483,7 @@ class TestListAllMcpServices:
 
     def test_returns_reason_when_no_catalogs(self, monkeypatch):
         monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, timeout=30: ({"catalogs": []}, None)
+            db_mod, "http_get_json", lambda url, token, timeout=30: ({"catalogs": []}, None)
         )
 
         names, reason = db_mod.list_all_mcp_services(WS, "token")

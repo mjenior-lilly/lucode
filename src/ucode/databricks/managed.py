@@ -6,10 +6,10 @@ from decimal import Decimal, InvalidOperation
 from urllib.parse import urlencode
 
 from ucode.databricks.transport import (
-    _http_delete,
-    _http_get_json,
-    _http_patch_json,
-    _http_post_json,
+    http_delete,
+    http_get_json,
+    http_patch_json,
+    http_post_json,
     workspace_hostname,
 )
 
@@ -21,7 +21,7 @@ WORKSPACE_ADMIN_GROUP = "admins"
 def _scim_me(workspace: str, token: str) -> dict | None:
     """Return the SCIM `Me` payload for the caller, or None on failure."""
     hostname = workspace_hostname(workspace)
-    payload, _ = _http_get_json(f"https://{hostname}/api/2.0/preview/scim/v2/Me", token)
+    payload, _ = http_get_json(f"https://{hostname}/api/2.0/preview/scim/v2/Me", token)
     return payload if isinstance(payload, dict) else None
 
 
@@ -62,7 +62,7 @@ def list_workspace_budgets(workspace: str, token: str) -> tuple[list[dict], str 
     """
     hostname = workspace_hostname(workspace)
     url = f"https://{hostname}{_WORKSPACE_BUDGETS_API_PATH}"
-    payload, reason = _http_get_json(url, token, timeout=30)
+    payload, reason = http_get_json(url, token, timeout=30)
     if reason is not None:
         return [], reason
     if not isinstance(payload, dict):
@@ -119,7 +119,7 @@ def fetch_managed_coding_agent_configs(workspace: str, token: str) -> tuple[list
     """List the workspace's managed CodingAgentConfig(s) via the AI Gateway."""
     hostname = workspace_hostname(workspace)
     url = f"https://{hostname}{_CODING_AGENT_CONFIGS_API_PATH}"
-    payload, reason = _http_get_json(url, token, timeout=30)
+    payload, reason = http_get_json(url, token, timeout=30)
     if reason is not None:
         return [], reason
     if isinstance(payload, dict):
@@ -141,7 +141,7 @@ def fetch_model_recommendation(workspace: str, token: str) -> tuple[dict, str | 
     """
     hostname = workspace_hostname(workspace)
     url = f"https://{hostname}{_CODING_AGENT_CONFIGS_API_PATH}:recommendModel"
-    payload, reason = _http_post_json(url, token, {}, timeout=30)
+    payload, reason = http_post_json(url, token, {}, timeout=30)
     if reason is not None:
         return {}, reason
     if not isinstance(payload, dict):
@@ -190,7 +190,7 @@ def create_coding_agent_config(
     already defined; callers should update that one instead of creating a second.
     """
     url = _coding_agent_config_url(workspace)
-    payload, reason = _http_post_json(url, token, config, timeout=30)
+    payload, reason = http_post_json(url, token, config, timeout=30)
     if reason is not None:
         return None, reason
     if not isinstance(payload, dict):
@@ -226,7 +226,7 @@ def update_coding_agent_config(
     query = urlencode({"update_mask": ",".join(update_mask)})
     url = f"{_coding_agent_config_url(workspace, name)}?{query}"
     body = {**config, "name": name}
-    payload, reason = _http_patch_json(url, token, body, timeout=30)
+    payload, reason = http_patch_json(url, token, body, timeout=30)
     if reason is not None:
         return None, reason
     if not isinstance(payload, dict):
@@ -241,7 +241,7 @@ def delete_coding_agent_config(workspace: str, token: str, name: str) -> str | N
     payload worth handing back.
     """
     url = _coding_agent_config_url(workspace, name)
-    _, reason = _http_delete(url, token, timeout=30)
+    _, reason = http_delete(url, token, timeout=30)
     return reason
 
 
@@ -265,7 +265,7 @@ def resolve_current_budget_spend(
     coding-agent config — so it never raises.
     """
     url = f"https://{workspace_hostname(workspace)}{CODING_AGENT_RECOMMEND_MODEL_PATH}"
-    payload, reason = _http_post_json(url, token, {"available_models": []}, timeout=timeout)
+    payload, reason = http_post_json(url, token, {"available_models": []}, timeout=timeout)
     if payload is None:
         return None, reason or "unknown error"
     if not isinstance(payload, dict):

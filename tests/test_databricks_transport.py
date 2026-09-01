@@ -10,10 +10,10 @@ import pytest
 
 import ucode.databricks.transport as db_mod
 from ucode.databricks.transport import (
-    _format_subprocess_result,
-    _http_get_json,
     _scrub_databrickscfg,
     _scrub_json,
+    format_subprocess_result,
+    http_get_json,
     workspace_hostname,
 )
 
@@ -52,7 +52,7 @@ class TestWorkspaceHostname:
 
 
 class TestHttpGetJsonReason:
-    """The `reason` string returned by `_http_get_json` must include the response body
+    """The `reason` string returned by `http_get_json` must include the response body
     so callers (e.g. ensure_ai_gateway_v2) can route on it. Before issue #84's fix
     the body was logged only when UCODE_DEBUG=1 and dropped from the bubbled error."""
 
@@ -69,7 +69,7 @@ class TestHttpGetJsonReason:
 
         exc = self._http_error(400, "Bad Request", body="Invalid Token")
         with patch("ucode.databricks.transport.urllib_request.urlopen", side_effect=exc):
-            payload, reason = _http_get_json("https://x/y", "tok")
+            payload, reason = http_get_json("https://x/y", "tok")
         assert payload is None
         assert "HTTP 400" in reason
         assert "Invalid Token" in reason
@@ -78,7 +78,7 @@ class TestHttpGetJsonReason:
 
         exc = self._http_error(404, "Not Found")
         with patch("ucode.databricks.transport.urllib_request.urlopen", side_effect=exc):
-            payload, reason = _http_get_json("https://x/y", "tok")
+            payload, reason = http_get_json("https://x/y", "tok")
         assert payload is None
         assert reason == "HTTP 404 Not Found"
 
@@ -94,7 +94,7 @@ class TestHttpGetJsonTimeout:
 
         monkeypatch.setattr(db_mod.urllib_request, "urlopen", raise_timeout)
 
-        payload, reason = db_mod._http_get_json(f"{WS}/api/2.0/anything", "tok")
+        payload, reason = db_mod.http_get_json(f"{WS}/api/2.0/anything", "tok")
 
         assert payload is None
         assert reason is not None
@@ -106,7 +106,19 @@ class TestHttpGetJsonTimeout:
 
         monkeypatch.setattr(db_mod.urllib_request, "urlopen", raise_timeout)
 
-        payload, reason = db_mod._http_post_json(f"{WS}/api/2.0/anything", "tok", {"k": "v"})
+        payload, reason = db_mod.http_post_json(f"{WS}/api/2.0/anything", "tok", {"k": "v"})
+
+        assert payload is None
+        assert reason is not None
+        assert "timed out" in reason
+
+    def test_bytes_read_timeout_returns_reason_instead_of_raising(self, monkeypatch):
+        def raise_timeout(request, timeout=None):
+            raise TimeoutError("The read operation timed out")
+
+        monkeypatch.setattr(db_mod.urllib_request, "urlopen", raise_timeout)
+
+        payload, reason = db_mod.http_get_bytes(f"{WS}/api/2.0/anything", "tok")
 
         assert payload is None
         assert reason is not None
@@ -121,7 +133,7 @@ class TestFormatSubprocessResult:
             stdout='{"access_token": "dapi-secret-do-not-leak", "token_type": "Bearer"}',
             stderr="",
         )
-        formatted = _format_subprocess_result(result)
+        formatted = format_subprocess_result(result)
         assert "dapi-secret-do-not-leak" not in formatted
         assert "rc=0" in formatted
 
@@ -132,10 +144,29 @@ class TestFormatSubprocessResult:
             stdout="useful diagnostic output",
             stderr="error: no matching profile",
         )
-        formatted = _format_subprocess_result(result)
+        formatted = format_subprocess_result(result)
         assert "rc=1" in formatted
         assert "useful diagnostic output" in formatted
         assert "no matching profile" in formatted
+
+    def test_scrubs_credentials_on_failure(self):
+        result = subprocess.CompletedProcess(
+            args=["databricks", "auth", "token"],
+            returncode=1,
+            stdout='{"access_token": "dapiSyntheticToken123", "message": "diagnostic"}',
+            stderr=(
+                "Authorization: Bearer synthetic-bearer-value and dapiAnotherSyntheticToken456"
+            ),
+        )
+        formatted = format_subprocess_result(result)
+        for secret in (
+            "dapiSyntheticToken123",
+            "synthetic-bearer-value",
+            "dapiAnotherSyntheticToken456",
+        ):
+            assert secret not in formatted
+        assert "<redacted>" in formatted
+        assert "diagnostic" in formatted
 
 
 class TestScrubDatabrickscfg:
@@ -228,7 +259,7 @@ class TestHttpDelete:
         monkeypatch.setattr(
             db_mod.urllib_request, "urlopen", lambda request, timeout=None: self._empty_response()
         )
-        payload, reason = db_mod._http_delete(f"{WS}/api/anything", "tok")
+        payload, reason = db_mod.http_delete(f"{WS}/api/anything", "tok")
         assert reason is None
         assert payload is None
 
@@ -238,7 +269,7 @@ class TestHttpDelete:
             "urlopen",
             lambda request, timeout=None: self._empty_response("{}"),
         )
-        payload, reason = db_mod._http_delete(f"{WS}/api/anything", "tok")
+        payload, reason = db_mod.http_delete(f"{WS}/api/anything", "tok")
         assert reason is None
         assert payload == {}
 
@@ -251,7 +282,7 @@ class TestHttpDelete:
             return self._empty_response()
 
         monkeypatch.setattr(db_mod.urllib_request, "urlopen", capture)
-        db_mod._http_delete(f"{WS}/api/anything", "tok")
+        db_mod.http_delete(f"{WS}/api/anything", "tok")
         assert seen["method"] == "DELETE"
         assert seen["data"] is None
 
@@ -268,7 +299,7 @@ class TestHttpDelete:
             )
 
         monkeypatch.setattr(db_mod.urllib_request, "urlopen", raise_http_error)
-        _, reason = db_mod._http_delete(f"{WS}/api/anything", "tok")
+        _, reason = db_mod.http_delete(f"{WS}/api/anything", "tok")
         assert reason is not None
         assert "403" in reason
         assert "PERMISSION_DENIED" in reason
@@ -292,7 +323,7 @@ class TestHttpPatchJson:
             return response
 
         monkeypatch.setattr(db_mod.urllib_request, "urlopen", capture)
-        payload, reason = db_mod._http_patch_json(f"{WS}/api/anything", "tok", {"k": "v"})
+        payload, reason = db_mod.http_patch_json(f"{WS}/api/anything", "tok", {"k": "v"})
         assert reason is None
         assert payload == {"name": "coding-agent-configs/x"}
         assert seen["method"] == "PATCH"

@@ -14,6 +14,7 @@ delegated to the existing ``ucode configure <thing>`` commands and their results
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import cast
 
@@ -34,6 +35,12 @@ from ucode.managed_setup import (
     save_managed_settings,
     serialize_managed_config,
     validate_manifest,
+)
+from ucode.mcp import (
+    SKILLS_MCP_KIND,
+    _skill_mcp_locations,
+    configure_mcp_command,
+    configure_skills_mcp_command,
 )
 from ucode.state import load_state
 from ucode.ui import (
@@ -103,8 +110,6 @@ def _mcp_servers_from_state(state: dict) -> list[dict]:
     Skips the skills registry connection: skills are published under the manifest's own ``skills``
     field, so including its MCP entry would configure it twice.
     """
-    from ucode.mcp import SKILLS_MCP_KIND
-
     servers: list[dict] = []
     for entry in state.get("mcp_servers") or []:
         if not isinstance(entry, dict) or entry.get("kind") == SKILLS_MCP_KIND:
@@ -123,8 +128,6 @@ def _mcp_servers_from_state(state: dict) -> list[dict]:
 
 def _skill_names_from_state(state: dict) -> list[str]:
     """Skill schemas registered on the skills MCP connection (``catalog.schema`` entries)."""
-    from ucode.mcp import _skill_mcp_locations
-
     return [name for name in _skill_mcp_locations(state) if isinstance(name, str) and name]
 
 
@@ -521,7 +524,12 @@ def _print_next_steps() -> None:
     print_note("Publish it to the workspace:  ucode apply")
 
 
-def setup_command(from_file: str | None = None) -> int:
+def setup_command(
+    from_file: str | None = None,
+    *,
+    prompt_for_configuration: Callable[[], tuple[str, str | None]] | None = None,
+    configure_state: Callable[..., dict] | None = None,
+) -> int:
     """Author the workspace's managed coding-agent config interactively.
 
     Returns a process exit code. Raises RuntimeError for actionable failures (not an admin, no
@@ -530,15 +538,14 @@ def setup_command(from_file: str | None = None) -> int:
     if from_file is not None:
         return setup_from_file(from_file)
 
-    # Imported here rather than at module scope: `cli` imports this module, so a top-level import
-    # would be circular.
-    from ucode.cli import _prompt_for_configuration, configure_shared_state
+    if prompt_for_configuration is None or configure_state is None:
+        raise RuntimeError("Interactive setup requires CLI configuration callbacks.")
 
     print_section("ucode setup")
     print_note("Author the managed coding config for this workspace.")
     print_note("Developers pull it automatically when they run ucode.")
 
-    workspace, profile = _prompt_for_configuration()
+    workspace, profile = prompt_for_configuration()
     # `configure_shared_state` below authenticates too and prints its own success line, so this one
     # stays quiet rather than reporting the same thing twice. It still has to run first: the admin
     # gate and the existing-config check both need a token before discovery.
@@ -551,7 +558,7 @@ def setup_command(from_file: str | None = None) -> int:
 
     # Discover the workspace's models and gateway URLs. This also logs in and persists local state,
     # which is what lets the admin dry-run the config on their own machine afterwards.
-    state = configure_shared_state(workspace, profile=profile, force_login=False)
+    state = configure_state(workspace, profile=profile, force_login=False)
     workspace = state.get("workspace") or workspace
     profile = state.get("profile") or profile
 
@@ -601,8 +608,6 @@ def setup_command(from_file: str | None = None) -> int:
 
     print_section("MCP servers")
     if prompt_yes_no_default("Set up managed MCP servers for this workspace?", default=False):
-        from ucode.mcp import configure_mcp_command
-
         configure_mcp_command()
         mcp_servers = _mcp_servers_from_state(load_state())
         if mcp_servers:
@@ -617,8 +622,6 @@ def setup_command(from_file: str | None = None) -> int:
         )
         parsed: list[str] = [item.strip() for item in (locations or "").split(",") if item.strip()]
         if parsed:
-            from ucode.mcp import configure_skills_mcp_command
-
             configure_skills_mcp_command(parsed)
             skill_names = _skill_names_from_state(load_state()) or parsed
             manifest["skills"] = {"names": skill_names}
@@ -687,22 +690,28 @@ def _explain_publish_failure(reason: str) -> str:
     return f"Could not publish the managed config: {reason}"
 
 
-def apply_command(*, yes: bool = False) -> int:
+def apply_command(
+    *,
+    yes: bool = False,
+    prompt_for_configuration: Callable[[], tuple[str, str | None]] | None = None,
+) -> int:
     """Publish the authored manifest to the workspace.
 
     Updates the existing config in place when there is one, rather than deleting and recreating it:
     a failed recreate would leave the workspace with no managed config at all, and every developer
     would silently fall back to their own settings. Returns a process exit code.
     """
-    from ucode.cli import _prompt_for_configuration
-
     print_section("ucode apply")
 
     state = load_state()
     workspace = state.get("workspace")
     profile = state.get("profile")
     if not workspace:
-        workspace, profile = _prompt_for_configuration()
+        if prompt_for_configuration is None:
+            raise RuntimeError(
+                "Apply requires a CLI configuration callback when no workspace exists."
+            )
+        workspace, profile = prompt_for_configuration()
 
     manifest = load_managed_settings(workspace)
     if manifest is None:

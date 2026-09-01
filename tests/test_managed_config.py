@@ -213,7 +213,7 @@ class TestFetchClient:
         payload = {"coding_agent_configs": [RAW_MANIFEST]}
         monkeypatch.setattr(
             db_mod,
-            "_http_get_json",
+            "http_get_json",
             lambda url, token, timeout=10: (payload, None),
         )
         configs, reason = db_mod.fetch_managed_coding_agent_configs("https://ws", "tok")
@@ -224,7 +224,7 @@ class TestFetchClient:
     def test_empty_list_when_no_configs(self, monkeypatch):
         monkeypatch.setattr(
             db_mod,
-            "_http_get_json",
+            "http_get_json",
             lambda url, token, timeout=10: ({}, None),
         )
         configs, reason = db_mod.fetch_managed_coding_agent_configs("https://ws", "tok")
@@ -234,7 +234,7 @@ class TestFetchClient:
     def test_http_failure_surfaces_reason(self, monkeypatch):
         monkeypatch.setattr(
             db_mod,
-            "_http_get_json",
+            "http_get_json",
             lambda url, token, timeout=10: (None, "HTTP 403 Forbidden"),
         )
         configs, reason = db_mod.fetch_managed_coding_agent_configs("https://ws", "tok")
@@ -275,13 +275,13 @@ class TestRefreshManagedConfig:
         saved: list[tuple] = []
         monkeypatch.setattr(mc_mod, "get_managed_config", lambda ws, tok: (MANAGED, None))
         monkeypatch.setattr(mc_mod, "save_managed_state", lambda ws, cfg: saved.append((ws, cfg)))
-        assert refresh_managed_config(_state()) == MANAGED
+        assert refresh_managed_config(_state()) == (MANAGED, None)
         assert saved == [(WORKSPACE, MANAGED)]
 
     def test_no_managed_config_returns_none(self, monkeypatch):
         monkeypatch.setattr(mc_mod, "get_managed_config", lambda ws, tok: (None, None))
         monkeypatch.setattr(mc_mod, "save_managed_state", lambda ws, cfg: None)
-        assert refresh_managed_config(_state()) is None
+        assert refresh_managed_config(_state()) == (None, None)
 
     def test_read_failure_falls_back_to_the_persisted_config(self, monkeypatch):
         # The admin's last known policy beats no policy, so a failed fetch reuses what we saved.
@@ -289,19 +289,18 @@ class TestRefreshManagedConfig:
         monkeypatch.setattr(mc_mod, "get_managed_config", lambda ws, tok: (None, "HTTP 500"))
         monkeypatch.setattr(mc_mod, "load_managed_state", lambda ws: MANAGED)
         monkeypatch.setattr(mc_mod, "print_warning", lambda msg: warnings.append(msg))
-        assert refresh_managed_config(_state()) == MANAGED
+        assert refresh_managed_config(_state()) == (MANAGED, "HTTP 500")
         assert "HTTP 500" in warnings[0]
         assert "last one saved" in warnings[0]
 
-    def test_read_failure_without_persisted_config_is_silent(self, monkeypatch):
-        # Nothing persisted means no managed config is in play, so an expired session shouldn't
-        # produce a warning about a feature this developer doesn't use.
+    def test_read_failure_without_persisted_config_preserves_reason(self, monkeypatch):
+        # The launch caller needs this reason to avoid claiming authoritative absence.
         monkeypatch.setattr(mc_mod, "get_managed_config", lambda ws, tok: (None, "HTTP 500"))
         monkeypatch.setattr(mc_mod, "load_managed_state", lambda ws: None)
         monkeypatch.setattr(
             mc_mod, "print_warning", lambda msg: pytest.fail(f"should not warn: {msg}")
         )
-        assert refresh_managed_config(_state()) is None
+        assert refresh_managed_config(_state()) == (None, "HTTP 500")
 
     def test_auth_failure_falls_back_to_the_persisted_config(self, monkeypatch):
         warnings: list[str] = []
@@ -312,10 +311,10 @@ class TestRefreshManagedConfig:
         monkeypatch.setattr(mc_mod, "get_databricks_token", boom)
         monkeypatch.setattr(mc_mod, "load_managed_state", lambda ws: MANAGED)
         monkeypatch.setattr(mc_mod, "print_warning", lambda msg: warnings.append(msg))
-        assert refresh_managed_config(_state()) == MANAGED
+        assert refresh_managed_config(_state()) == (MANAGED, "no token")
         assert "no token" in warnings[0]
 
-    def test_auth_failure_without_persisted_config_is_silent(self, monkeypatch):
+    def test_auth_failure_without_persisted_config_preserves_reason(self, monkeypatch):
         def boom(ws, profile):
             raise RuntimeError("no token")
 
@@ -324,18 +323,17 @@ class TestRefreshManagedConfig:
         monkeypatch.setattr(
             mc_mod, "print_warning", lambda msg: pytest.fail(f"should not warn: {msg}")
         )
-        assert refresh_managed_config(_state()) is None
+        assert refresh_managed_config(_state()) == (None, "no token")
 
-    def test_permission_denied_without_cache_is_silent(self, monkeypatch):
-        # A refusal is no evidence a config exists, so with nothing cached there is no managed
-        # config in play and warning would be a false positive.
+    def test_permission_denied_without_cache_preserves_reason(self, monkeypatch):
+        # A refusal is no evidence a config exists, but the launch still reports the failed read.
         denied = 'HTTP 403 Forbidden: {"error_code":"PERMISSION_DENIED"}'
         monkeypatch.setattr(mc_mod, "get_managed_config", lambda ws, tok: (None, denied))
         monkeypatch.setattr(mc_mod, "load_managed_state", lambda ws: None)
         monkeypatch.setattr(
             mc_mod, "print_warning", lambda msg: pytest.fail(f"should not warn: {msg}")
         )
-        assert refresh_managed_config(_state()) is None
+        assert refresh_managed_config(_state()) == (None, denied)
 
     def test_permission_denied_warns_and_keeps_the_cached_config(self, monkeypatch):
         # A refused read is worth surfacing: an admin may have published a config that isn't
@@ -348,7 +346,7 @@ class TestRefreshManagedConfig:
         monkeypatch.setattr(
             mc_mod, "save_managed_state", lambda ws, cfg: pytest.fail("must not clear the cache")
         )
-        assert refresh_managed_config(_state()) == MANAGED
+        assert refresh_managed_config(_state()) == (MANAGED, denied)
         assert "not readable by you" in warnings[0]
 
     def test_no_config_on_the_server_does_not_use_a_stale_persisted_file(self, monkeypatch):
@@ -359,7 +357,7 @@ class TestRefreshManagedConfig:
         monkeypatch.setattr(
             mc_mod, "load_managed_state", lambda ws: pytest.fail("must not fall back")
         )
-        assert refresh_managed_config(_state()) is None
+        assert refresh_managed_config(_state()) == (None, None)
 
     def test_no_config_on_the_server_clears_the_persisted_one(self, monkeypatch):
         # Without this, removing the config server-side would leave the old one on disk and the next
@@ -368,7 +366,7 @@ class TestRefreshManagedConfig:
         monkeypatch.setattr(mc_mod, "get_managed_config", lambda ws, tok: (None, None))
         monkeypatch.setattr(mc_mod, "save_managed_state", lambda ws, cfg: saved.append((ws, cfg)))
         monkeypatch.setattr(mc_mod, "load_managed_state", lambda ws: None)
-        assert refresh_managed_config(_state()) is None
+        assert refresh_managed_config(_state()) == (None, None)
         assert saved == [(WORKSPACE, {})]
 
     def test_empty_persisted_config_is_not_treated_as_a_fallback(self, monkeypatch):
@@ -379,13 +377,13 @@ class TestRefreshManagedConfig:
         monkeypatch.setattr(
             mc_mod, "print_warning", lambda msg: pytest.fail(f"should not warn: {msg}")
         )
-        assert refresh_managed_config(_state()) is None
+        assert refresh_managed_config(_state()) == (None, "HTTP 500")
 
     def test_no_workspace_is_a_noop(self, monkeypatch):
         monkeypatch.setattr(
             mc_mod, "get_managed_config", lambda ws, tok: pytest.fail("should not fetch")
         )
-        assert refresh_managed_config({}) is None
+        assert refresh_managed_config({}) == (None, None)
 
 
 class TestGetModelRecommendation:

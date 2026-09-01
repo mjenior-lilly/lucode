@@ -403,8 +403,8 @@ def prompt_for_text(
 ) -> str | None:
     """Free-text prompt, used when model discovery found nothing to pick from.
 
-    Returns the trimmed input, ``default`` on an empty answer, or None when there is no
-    default and the user submits nothing (or closes stdin).
+    Returns the trimmed input or ``default`` on an empty answer. With no default, empty input
+    re-prompts; ``None`` is returned only when stdin closes and ``required`` is false.
 
     ``required=True`` raises ``KeyboardInterrupt`` on closed stdin instead of returning None, for
     callers that loop until they get a value: returning None to such a caller spins forever on a

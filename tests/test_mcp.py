@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from contextlib import nullcontext
+
 from ucode import mcp
 
 WS = "https://example.databricks.com"
@@ -24,6 +26,49 @@ def _proxy_argv() -> list[str]:
     return build_mcp_proxy_argv(GH_URL, WS, "p")
 
 
+class TestMcpServiceEntryNames:
+    def test_literal_hyphens_do_not_collide_with_namespace_separators(self):
+        assert mcp._mcp_service_entry_name("cat.a-b.c") == "cat-a--b-c"
+        assert mcp._mcp_service_entry_name("cat.a.b-c") == "cat-a-b--c"
+
+    def test_non_hyphenated_names_keep_legacy_spelling(self):
+        assert mcp._mcp_service_entry_name("cat.schema.service") == "cat-schema-service"
+
+    def test_location_reconfigure_migrates_legacy_entry_by_url(self, monkeypatch):
+        full_name = "cat.a-b.service"
+        legacy = {
+            "name": "cat-a-b-service",
+            "url": f"{WS}/ai-gateway/mcp-services/{full_name}",
+            "auth": "proxy",
+            "clients": ["opencode"],
+        }
+        monkeypatch.setattr(mcp, "get_databricks_token", lambda *args: "token")
+        monkeypatch.setattr(mcp, "spinner", lambda *_: nullcontext())
+        monkeypatch.setattr(mcp, "list_mcp_services", lambda *args, **kwargs: ([full_name], None))
+
+        servers = mcp._resolve_location_mcp_servers(WS, None, ["opencode"], "cat.a-b", [legacy])
+
+        assert servers[0]["name"] == "cat-a--b-service"
+        assert servers[0]["clients"] == ["opencode"]
+
+    def test_legacy_name_without_matching_url_is_not_silently_assigned(self, monkeypatch):
+        full_name = "cat.a-b.service"
+        ambiguous = {
+            "name": "cat-a-b-service",
+            "url": f"{WS}/ai-gateway/mcp-services/cat.a.b-service",
+            "auth": "proxy",
+            "clients": ["legacy-client"],
+        }
+        monkeypatch.setattr(mcp, "get_databricks_token", lambda *args: "token")
+        monkeypatch.setattr(mcp, "spinner", lambda *_: nullcontext())
+        monkeypatch.setattr(mcp, "list_mcp_services", lambda *args, **kwargs: ([full_name], None))
+
+        servers = mcp._resolve_location_mcp_servers(WS, None, ["opencode"], "cat.a-b", [ambiguous])
+
+        assert servers[0]["name"] == "cat-a--b-service"
+        assert servers[0]["clients"] == ["opencode"]
+
+
 class TestBuildMcpProxyArgv:
     def test_argv_is_ucode_mcp_proxy_command(self):
         argv = _proxy_argv()
@@ -38,6 +83,30 @@ class TestBuildMcpProxyArgv:
         assert with_pat[-1] == "--use-pat"
         no_profile = build_mcp_proxy_argv(GH_URL, WS, None)
         assert "--profile" not in no_profile
+
+
+class TestDiscoveryWarnings:
+    def test_workspace_wide_mcp_failure_is_visible(self, monkeypatch):
+        warnings: list[str] = []
+        monkeypatch.setattr(mcp, "get_databricks_token", lambda *args: "token")
+        monkeypatch.setattr(
+            mcp, "list_all_mcp_services", lambda *args, **kwargs: ([], "worker failed")
+        )
+        monkeypatch.setattr(mcp, "print_warning", warnings.append)
+
+        assert mcp.discover_all_mcp_service_names(WS) == []
+        assert warnings == ["MCP service discovery was incomplete: worker failed"]
+
+    def test_workspace_wide_mcp_absence_is_not_reported_as_failure(self, monkeypatch):
+        warnings: list[str] = []
+        monkeypatch.setattr(mcp, "get_databricks_token", lambda *args: "token")
+        monkeypatch.setattr(
+            mcp, "list_all_mcp_services", lambda *args, **kwargs: ([], "no MCP services found")
+        )
+        monkeypatch.setattr(mcp, "print_warning", warnings.append)
+
+        assert mcp.discover_all_mcp_service_names(WS) == []
+        assert warnings == []
 
 
 class TestExternalMcpConnectionNames:

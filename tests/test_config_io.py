@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 
 import pytest
-import tomlkit
 
 import ucode.config_io as config_io
 from ucode.config_io import (
@@ -13,15 +12,11 @@ from ucode.config_io import (
     deep_merge_dict,
     ensure_parent_dir,
     is_dry_run,
-    parse_dotenv,
     read_json_safe,
-    read_toml_safe,
     restore_file,
     set_dry_run,
-    write_dotenv,
     write_json_file,
     write_text_file,
-    write_toml_file,
 )
 
 
@@ -141,9 +136,28 @@ class TestBackupAndRestore:
         )
         assert result is False
 
+    def test_restore_from_backup_skipped_in_dry_run(self, tmp_path):
+        config = tmp_path / "config.json"
+        backup = tmp_path / "backup.json"
+        config.write_text("configured", encoding="utf-8")
+        backup.write_text("original", encoding="utf-8")
+        set_dry_run(True)
+
+        assert restore_file(config, backup, managed=True) is False
+        assert config.read_text(encoding="utf-8") == "configured"
+        assert backup.read_text(encoding="utf-8") == "original"
+
+    def test_managed_config_deletion_skipped_in_dry_run(self, tmp_path):
+        config = tmp_path / "config.json"
+        config.write_text("managed", encoding="utf-8")
+        set_dry_run(True)
+
+        assert restore_file(config, tmp_path / "missing.json", managed=True) is False
+        assert config.read_text(encoding="utf-8") == "managed"
+
 
 # ---------------------------------------------------------------------------
-# write_text_file / write_json_file / write_toml_file / write_dotenv
+# write_text_file / write_json_file
 # ---------------------------------------------------------------------------
 
 
@@ -171,31 +185,9 @@ class TestWriteHelpers:
         write_json_file(p, {"a": 1})
         assert not p.exists()
 
-    def test_write_toml_file(self, tmp_path):
-        p = tmp_path / "out.toml"
-        doc = tomlkit.document()
-        doc.add("key", "val")
-        write_toml_file(p, doc)
-        assert "key" in p.read_text()
-
-    def test_write_toml_file_dry_run_no_write(self, tmp_path):
-        set_dry_run(True)
-        p = tmp_path / "out.toml"
-        doc = tomlkit.document()
-        doc.add("key", "val")
-        write_toml_file(p, doc)
-        assert not p.exists()
-
-    def test_write_dotenv(self, tmp_path):
-        p = tmp_path / ".env"
-        write_dotenv(p, {"KEY": "value", "OTHER": "123"})
-        text = p.read_text()
-        assert 'KEY="value"' in text
-        assert 'OTHER="123"' in text
-
 
 # ---------------------------------------------------------------------------
-# read_json_safe / read_toml_safe
+# read_json_safe
 # ---------------------------------------------------------------------------
 
 
@@ -218,57 +210,6 @@ class TestReadHelpers:
         p = tmp_path / "arr.json"
         p.write_text("[1, 2, 3]", encoding="utf-8")
         assert read_json_safe(p) == {}
-
-    def test_read_toml_safe_missing_file(self, tmp_path):
-        doc = read_toml_safe(tmp_path / "missing.toml")
-        assert dict(doc) == {}
-
-    def test_read_toml_safe_valid(self, tmp_path):
-        p = tmp_path / "config.toml"
-        p.write_text('[section]\nkey = "val"\n', encoding="utf-8")
-        doc = read_toml_safe(p)
-        assert doc["section"]["key"] == "val"
-
-    def test_read_toml_safe_invalid(self, tmp_path):
-        p = tmp_path / "bad.toml"
-        p.write_text("[[[ broken", encoding="utf-8")
-        doc = read_toml_safe(p)
-        assert dict(doc) == {}
-
-
-# ---------------------------------------------------------------------------
-# parse_dotenv
-# ---------------------------------------------------------------------------
-
-
-class TestParseDotenv:
-    def test_simple_pairs(self, tmp_path):
-        p = tmp_path / ".env"
-        p.write_text("KEY=value\nOTHER=123\n", encoding="utf-8")
-        assert parse_dotenv(p) == {"KEY": "value", "OTHER": "123"}
-
-    def test_quoted_values(self, tmp_path):
-        p = tmp_path / ".env"
-        p.write_text("KEY=\"quoted\"\nSINGLE='also'\n", encoding="utf-8")
-        assert parse_dotenv(p) == {"KEY": "quoted", "SINGLE": "also"}
-
-    def test_skips_comments_and_blank_lines(self, tmp_path):
-        p = tmp_path / ".env"
-        p.write_text("# comment\n\nKEY=value\n", encoding="utf-8")
-        assert parse_dotenv(p) == {"KEY": "value"}
-
-    def test_skips_lines_without_equals(self, tmp_path):
-        p = tmp_path / ".env"
-        p.write_text("NOEQUALSSIGN\nKEY=value\n", encoding="utf-8")
-        assert parse_dotenv(p) == {"KEY": "value"}
-
-    def test_missing_file_returns_empty(self, tmp_path):
-        assert parse_dotenv(tmp_path / "missing.env") == {}
-
-    def test_value_with_equals(self, tmp_path):
-        p = tmp_path / ".env"
-        p.write_text("URL=http://example.com?a=1\n", encoding="utf-8")
-        assert parse_dotenv(p) == {"URL": "http://example.com?a=1"}
 
 
 # ---------------------------------------------------------------------------

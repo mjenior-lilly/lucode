@@ -11,6 +11,8 @@ Fix commands:
 
 from __future__ import annotations
 
+import ast
+import re
 import subprocess
 import sys
 import tomllib
@@ -26,14 +28,30 @@ def _run(cmd: list[str]) -> subprocess.CompletedProcess:
 def test_direct_runtime_imports_are_declared():
     project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     declared = {
-        requirement.split("<", 1)[0].split(">", 1)[0] for requirement in project["dependencies"]
+        re.split(r"[<>=!~;\[]", requirement, maxsplit=1)[0].strip()
+        for requirement in project["dependencies"]
     }
     import_distributions = {
         "anyio": "anyio",
+        "databricks": "databricks-sql-connector",
+        "httpx": "httpx",
+        "mcp": "mcp",
         "prompt_toolkit": "prompt-toolkit",
+        "questionary": "questionary",
         "rich": "rich",
+        "typer": "typer",
     }
-    assert set(import_distributions.values()) <= declared
+    imported: set[str] = set()
+    for path in (ROOT / "src" / "ucode").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imported.update(alias.name.partition(".")[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
+                imported.add(node.module.partition(".")[0])
+    third_party = imported - sys.stdlib_module_names - {"ucode"}
+    assert third_party <= import_distributions.keys(), "Add distribution mappings for new imports"
+    assert {import_distributions[name] for name in third_party} <= declared
 
 
 def test_ruff_check():

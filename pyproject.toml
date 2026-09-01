@@ -23,7 +23,6 @@ dependencies = [
   "prompt-toolkit>=2.0,<4.0",
   "questionary>=2.0.0",
   "rich>=12.3.0",
-  "tomlkit>=0.13.0",
   "typer>=0.12.0",
 ]
 

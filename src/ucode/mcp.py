@@ -203,6 +203,11 @@ def discover_mcp_service_names(workspace: str, profile: str | None = None) -> li
     return names
 
 
+def _is_discovery_failure(reason: str | None) -> bool:
+    """Identify an incomplete discovery result without flagging a clean absence."""
+    return reason is not None and not reason.startswith("no ")
+
+
 def discover_all_mcp_service_names(
     workspace: str,
     profile: str | None = None,
@@ -213,7 +218,9 @@ def discover_all_mcp_service_names(
     counterpart to `discover_mcp_service_names`. `on_progress` is forwarded to
     the walk for live count reporting."""
     token = get_databricks_token(workspace, profile)
-    names, _reason = list_all_mcp_services(workspace, token, on_progress=on_progress)
+    names, reason = list_all_mcp_services(workspace, token, on_progress=on_progress)
+    if _is_discovery_failure(reason):
+        print_warning(f"MCP service discovery was incomplete: {reason}")
     return names
 
 
@@ -342,7 +349,9 @@ def discover_vector_search_mcp_servers(
     on_progress: Callable[[int, int, int], None] | None = None,
 ) -> list[dict]:
     token = get_databricks_token(workspace, profile)
-    pairs, _reason = list_vector_search_catalog_schemas(workspace, token, on_progress=on_progress)
+    pairs, reason = list_vector_search_catalog_schemas(workspace, token, on_progress=on_progress)
+    if _is_discovery_failure(reason):
+        print_warning(f"Vector Search discovery was incomplete: {reason}")
     return vector_search_mcp_servers(pairs, workspace)
 
 
@@ -372,7 +381,9 @@ def discover_uc_functions_mcp_servers(
     on_progress: Callable[[int, int, int], None] | None = None,
 ) -> list[dict]:
     token = get_databricks_token(workspace, profile)
-    pairs, _reason = list_uc_functions_catalog_schemas(workspace, token, on_progress=on_progress)
+    pairs, reason = list_uc_functions_catalog_schemas(workspace, token, on_progress=on_progress)
+    if _is_discovery_failure(reason):
+        print_warning(f"UC function discovery was incomplete: {reason}")
     return uc_functions_mcp_servers(pairs, workspace)
 
 
@@ -464,8 +475,8 @@ def _server_choice(name: str, checked: bool, title: str | None = None) -> questi
     )
 
 
-def _add_choice(selection: str, title: str) -> questionary.Choice:
-    return questionary.Choice(title=title, value=f"{MCP_ADD_PREFIX}{selection}")
+def _add_choice(selection: str, title: str, *, checked: bool = False) -> questionary.Choice:
+    return questionary.Choice(title=title, value=f"{MCP_ADD_PREFIX}{selection}", checked=checked)
 
 
 def _scrolling_checkbox(
@@ -656,16 +667,22 @@ def build_mcp_picker_choices(
     displayed_names.add("databricks-sql")
 
     for name in available_mcp_service_names or []:
-        # Picker shows the dotted UC name; state/agents store the dashed form
-        # (see resolver). Compare against the dashed form when checking what's
-        # already registered.
-        registered_as = name.replace(".", "-")
+        registered_as = _mcp_service_entry_name(name)
         display_title = f"MCP: {name}"
         if registered_as in known_names:
             choices.append(_server_choice(registered_as, True, display_title))
-        else:
-            choices.append(_add_choice(f"{MCP_SERVICE_SELECTION_PREFIX}{name}", display_title))
-        displayed_names.add(registered_as)
+            displayed_names.add(registered_as)
+            continue
+        legacy = _mcp_service_original_for_full_name(original_servers, name)
+        choices.append(
+            _add_choice(
+                f"{MCP_SERVICE_SELECTION_PREFIX}{name}",
+                display_title,
+                checked=legacy is not None,
+            )
+        )
+        if legacy is not None:
+            displayed_names.add(str(legacy["name"]))
 
     for name in available_external_names:
         display_title = f"Connection: {name}"
@@ -792,6 +809,41 @@ def _mcp_server_clients(server: dict) -> list[str]:
     return [client for client in (server.get("clients") or []) if client in MCP_CLIENTS]
 
 
+def _mcp_service_entry_name(full_name: str) -> str:
+    """Encode a dotted UC name for clients that reject dots without collisions.
+
+    Literal hyphens are doubled before dots become hyphens, so valid UC names
+    such as ``cat.a-b.c`` and ``cat.a.b-c`` remain distinct. Names without
+    literal hyphens retain the legacy spelling.
+    """
+    return full_name.replace("-", "--").replace(".", "-")
+
+
+def _mcp_service_original_for_full_name(
+    original_servers: list[dict], full_name: str
+) -> dict | None:
+    """Find a current or legacy service entry by its canonical gateway URL.
+
+    URL evidence makes migration unambiguous even when the old dashed name
+    collided. An old name alone is deliberately insufficient.
+    """
+    encoded_name = _mcp_service_entry_name(full_name)
+    by_name = _servers_by_name(original_servers).get(encoded_name)
+    if by_name is not None:
+        return by_name
+    suffix = f"/ai-gateway/mcp-services/{full_name}"
+    return next(
+        (
+            server
+            for server in original_servers
+            if isinstance(server.get("url"), str)
+            and server["url"].rstrip("/").endswith(suffix)
+            and isinstance(server.get("name"), str)
+        ),
+        None,
+    )
+
+
 def _resolve_mcp_selection(
     selection: str,
     workspace: str,
@@ -835,9 +887,9 @@ def _resolve_mcp_selection(
         full_name = selection.removeprefix(MCP_SERVICE_SELECTION_PREFIX)
         if not full_name:
             raise RuntimeError("missing MCP service name")
-        # Coding-agent CLIs may reject dots in registered names.
-        # URL keeps the UC `<cat>.<schema>.<id>` form; entry name uses dashes.
-        return full_name.replace(".", "-"), build_mcp_service_url(workspace, full_name)
+        # Coding-agent CLIs may reject dots in registered names. The entry-name
+        # encoder preserves valid literal hyphens without colliding namespaces.
+        return _mcp_service_entry_name(full_name), build_mcp_service_url(workspace, full_name)
 
     if selection.startswith(VECTOR_SEARCH_SELECTION_PREFIX):
         return _resolve_catalog_schema_selection(
@@ -1214,11 +1266,10 @@ def _resolve_location_mcp_servers(
             if full_name in services or full_name.split(".")[-1] in services
         ]
 
-    original_by_name = _servers_by_name(original_servers)
     working_servers: list[dict] = []
     for full_name in names:
-        entry_name = full_name.replace(".", "-")
-        original = original_by_name.get(entry_name)
+        entry_name = _mcp_service_entry_name(full_name)
+        original = _mcp_service_original_for_full_name(original_servers, full_name)
         original_clients = list((original or {}).get("clients") or [])
         merged_clients = original_clients + [c for c in clients if c not in original_clients]
         candidate = {

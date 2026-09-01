@@ -77,6 +77,21 @@ class TestLoadFullState:
         result = load_full_state()
         assert result["current_workspace"] is None
 
+    @pytest.mark.parametrize("workspaces", [None, [], "invalid"])
+    def test_returns_empty_when_workspaces_is_not_an_object(self, workspaces):
+        data = {
+            "state_version": STATE_VERSION,
+            "current_workspace": FAKE_WS,
+            "workspaces": workspaces,
+        }
+        state_mod.STATE_PATH.write_text(json.dumps(data), encoding="utf-8")
+        assert load_full_state()["workspaces"] == {}
+
+    def test_returns_empty_when_workspaces_is_missing(self):
+        data = {"state_version": STATE_VERSION, "current_workspace": FAKE_WS}
+        state_mod.STATE_PATH.write_text(json.dumps(data), encoding="utf-8")
+        assert load_full_state()["workspaces"] == {}
+
     def test_loads_valid_state(self, tmp_path):
         data = {
             "state_version": STATE_VERSION,

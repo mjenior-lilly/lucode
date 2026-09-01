@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 
+from ucode.agent_models import pi_default_model
 from ucode.config_io import APP_DIR, is_dry_run
 from ucode.databricks.auth import build_auth_shell_command
 from ucode.databricks.models import build_shared_base_urls
@@ -25,7 +26,11 @@ def load_full_state() -> dict:
         data = json.loads(STATE_PATH.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {"state_version": STATE_VERSION, "current_workspace": None, "workspaces": {}}
-    if not isinstance(data, dict) or data.get("state_version") != STATE_VERSION:
+    if (
+        not isinstance(data, dict)
+        or data.get("state_version") != STATE_VERSION
+        or not isinstance(data.get("workspaces"), dict)
+    ):
         return {"state_version": STATE_VERSION, "current_workspace": None, "workspaces": {}}
     return data
 
@@ -145,14 +150,12 @@ def build_agent_state(state: dict) -> dict[str, dict]:
     if not isinstance(workspace, str) or not workspace:
         return {}
 
-    from ucode.agents import default_model_for_tool
-
     profile = state.get("profile") if isinstance(state.get("profile"), str) else None
     base_urls_value = state.get("base_urls")
     base_urls = base_urls_value if isinstance(base_urls_value, dict) else {}
     use_pat = bool(state.get("use_pat"))
     auth_command = build_auth_shell_command(workspace, profile, use_pat=use_pat)
-    pi_model = default_model_for_tool("pi", state)
+    pi_model = pi_default_model(state)
     config = {
         "model": pi_model,
         "base_urls": base_urls.get("pi") if isinstance(base_urls.get("pi"), dict) else {},

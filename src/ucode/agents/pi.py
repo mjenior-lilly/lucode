@@ -35,6 +35,7 @@ import signal
 import subprocess
 import threading
 
+from ucode.agent_models import pi_default_model
 from ucode.agent_updates import available_npm_package_update
 from ucode.config_io import (
     APP_DIR,
@@ -53,6 +54,7 @@ from ucode.databricks.models import (
 )
 from ucode.state import mark_tool_managed, save_state
 from ucode.telemetry import agent_version, ucode_version
+from ucode.ui import print_warning
 
 PI_UCODE_HOME = APP_DIR / "pi-home"
 PI_CONFIG_DIR = PI_UCODE_HOME / ".pi" / "agent"
@@ -323,35 +325,7 @@ def _refresh_token_in_file(token: str) -> None:
 
 
 def default_model(state: dict) -> str | None:
-    """Select Pi's default deterministically from the current resolved state."""
-    managed_default = state.get("pi_default_model")
-    if isinstance(managed_default, str) and managed_default:
-        return managed_default
-
-    managed_models = state.get("pi_models")
-    if isinstance(managed_models, list):
-        for model in managed_models:
-            if (
-                isinstance(model, str)
-                and model
-                and classify_model_family(model) in (*ANTHROPIC_FAMILIES, "codex", "gemini")
-            ):
-                return model
-
-    claude_models = state.get("claude_models") or {}
-    if isinstance(claude_models, dict):
-        for family in ANTHROPIC_FAMILIES:
-            model = claude_models.get(family)
-            if isinstance(model, str) and model:
-                return model
-
-    for key in ("codex_models", "gemini_models"):
-        models = state.get(key) or []
-        if isinstance(models, list):
-            for model in models:
-                if isinstance(model, str) and model:
-                    return model
-    return None
+    return pi_default_model(state)
 
 
 def _refresh_token_once(
@@ -371,11 +345,15 @@ def _refresh_token_once(
 
 
 def _refresh_forever(state: dict, stop_event: threading.Event) -> None:
+    refresh_failing = False
     while not stop_event.wait(TOKEN_REFRESH_INTERVAL_SECONDS):
         try:
             _refresh_token_once(state, force_refresh=True, token_only=True)
-        except RuntimeError:
-            continue
+            refresh_failing = False
+        except RuntimeError as exc:
+            if not refresh_failing:
+                print_warning(f"Pi token refresh failed; will retry: {exc}")
+                refresh_failing = True
 
 
 def build_runtime_env(token: str) -> dict[str, str]:

@@ -378,6 +378,22 @@ class TestValidate:
         errors = validate_manifest({"skills": {"names": ["ok", ""]}})
         assert any("skills.names" in e for e in errors)
 
+    @pytest.mark.parametrize(
+        ("manifest", "message"),
+        [
+            ({"mcp_servers": "not-a-list"}, "mcp_servers must be a list"),
+            ({"skills": "not-an-object"}, "skills must be an object"),
+            ({"skills": {"names": "catalog.schema"}}, "skills.names must be a list"),
+            ({"budget_policy": []}, "budget_policy must be an object"),
+            (
+                {"budget_policy": {"budget_id": BUDGET_ID, "tiers": {}}},
+                "budget_policy.tiers must be a list",
+            ),
+        ],
+    )
+    def test_container_types_are_validated(self, manifest, message):
+        assert any(message in error for error in validate_manifest(manifest))
+
     def test_budget_policy_needs_a_budget_id(self):
         manifest = {
             **_minimal_manifest(),

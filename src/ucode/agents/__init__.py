@@ -6,7 +6,9 @@ import json
 import shutil
 import subprocess
 
-from ucode.config_io import ToolSpec
+from rich.panel import Panel
+
+from ucode.config_io import ToolSpec, restore_file
 from ucode.databricks.auth import install_ai_tools, install_databricks_cli
 from ucode.state import load_state, save_state
 from ucode.telemetry import agent_version
@@ -297,11 +299,6 @@ def validate_tool(tool: str) -> tuple[bool, str]:
 
 
 def validate_all_tools(state: dict) -> None:
-    from rich.panel import Panel
-
-    from ucode.agents.pi import PI_SETTINGS_BACKUP_PATH, PI_SETTINGS_PATH
-    from ucode.config_io import restore_file
-
     low_verbosity = is_low_verbosity()
     console.print()
     if low_verbosity:
@@ -330,7 +327,7 @@ def validate_all_tools(state: dict) -> None:
             managed = bool(state.get("managed_configs", {}).get(tool))
             restore_file(spec["config_path"], spec["backup_path"], managed)
             if tool == "pi":
-                restore_file(PI_SETTINGS_PATH, PI_SETTINGS_BACKUP_PATH, managed)
+                restore_file(pi.PI_SETTINGS_PATH, pi.PI_SETTINGS_BACKUP_PATH, managed)
             available_tools.remove(tool)
     state["available_tools"] = available_tools
     save_state(state)

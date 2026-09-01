@@ -249,3 +249,8 @@ class TestPiOpenCodeUsage:
         displays = {"opencode": "OpenCode", "pi": "Pi"}
         state = {"available_tools": ["pi", "opencode", "claude"]}
         assert configured_usage_tools(state, displays) == ["opencode", "pi"]
+
+    def test_explicit_empty_available_tools_does_not_use_stale_managed_configs(self):
+        displays = {"opencode": "OpenCode", "pi": "Pi"}
+        state = {"available_tools": [], "managed_configs": {"pi": {}}}
+        assert configured_usage_tools(state, displays) == []

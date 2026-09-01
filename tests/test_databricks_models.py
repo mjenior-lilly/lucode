@@ -106,9 +106,7 @@ class TestDiscoverModelServices:
                 _model_service("system.ai.llama-4-maverick"),
             ]
         }
-        monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, timeout=10: (payload, None)
-        )
+        monkeypatch.setattr(db_mod, "http_get_json", lambda url, token, timeout=10: (payload, None))
 
         claude, codex, gemini, oss, reason = db_mod.discover_model_services(WS, "token")
 
@@ -136,9 +134,7 @@ class TestDiscoverModelServices:
                 _model_service("system.ai.bge-reranker-v2"),
             ]
         }
-        monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, timeout=10: (payload, None)
-        )
+        monkeypatch.setattr(db_mod, "http_get_json", lambda url, token, timeout=10: (payload, None))
 
         claude, codex, gemini, oss, reason = db_mod.discover_model_services(WS, "token")
 
@@ -163,7 +159,7 @@ class TestDiscoverModelServices:
                 token_param = url.split("page_token=")[1].split("&")[0]
             return pages[token_param], None
 
-        monkeypatch.setattr(db_mod, "_http_get_json", fake_get)
+        monkeypatch.setattr(db_mod, "http_get_json", fake_get)
 
         claude, codex, _, _, reason = db_mod.discover_model_services(WS, "token")
 
@@ -173,7 +169,7 @@ class TestDiscoverModelServices:
 
     def test_http_failure_returns_reason(self, monkeypatch):
         monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, timeout=10: (None, "HTTP 500 Server Error")
+            db_mod, "http_get_json", lambda url, token, timeout=10: (None, "HTTP 500 Server Error")
         )
 
         claude, codex, gemini, oss, reason = db_mod.discover_model_services(WS, "token")
@@ -183,9 +179,7 @@ class TestDiscoverModelServices:
 
     def test_no_matching_families_reports_sample(self, monkeypatch):
         payload = {"model_services": [_model_service("system.ai.llama-4-maverick")]}
-        monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, timeout=10: (payload, None)
-        )
+        monkeypatch.setattr(db_mod, "http_get_json", lambda url, token, timeout=10: (payload, None))
 
         claude, codex, gemini, oss, reason = db_mod.discover_model_services(WS, "token")
 
@@ -204,9 +198,7 @@ class TestDiscoverModelServices:
                 _model_service("dnasi_agent_cuj.default.dnasi-gpt55-test"),
             ]
         }
-        monkeypatch.setattr(
-            db_mod, "_http_get_json", lambda url, token, timeout=10: (payload, None)
-        )
+        monkeypatch.setattr(db_mod, "http_get_json", lambda url, token, timeout=10: (payload, None))
 
         claude, codex, gemini, oss, reason = db_mod.discover_model_services(WS, "token")
 
@@ -225,7 +217,7 @@ class TestDiscoverModelServices:
             urls.append(url)
             return {"model_services": [_model_service("system.ai.gpt-5")]}, None
 
-        monkeypatch.setattr(db_mod, "_http_get_json", fake_get)
+        monkeypatch.setattr(db_mod, "http_get_json", fake_get)
 
         ids, reason = db_mod.list_model_services(WS, "token")
 
@@ -243,7 +235,7 @@ class TestDiscoverModelServices:
                 return None, "HTTP 499 Unknown"
             return payload, None
 
-        monkeypatch.setattr(db_mod, "_http_get_json", flaky_get)
+        monkeypatch.setattr(db_mod, "http_get_json", flaky_get)
 
         ids, reason = db_mod.list_model_services(WS, "token")
 
@@ -291,7 +283,7 @@ class TestDiscoverGeminiModels:
                 "databricks-gemini-3-flash",
             ]
         )
-        monkeypatch.setattr(db_mod, "_http_get_json", lambda url, token: (payload, None))
+        monkeypatch.setattr(db_mod, "http_get_json", lambda url, token: (payload, None))
 
         models, reason = db_mod.discover_gemini_models(WS, "token")
 
@@ -319,7 +311,7 @@ class TestDiscoverGeminiModels:
                 for name in ["databricks-gpt-5-2-codex", "databricks-gpt-4-1"]
             ]
         }
-        monkeypatch.setattr(db_mod, "_http_get_json", lambda url, token: (payload, None))
+        monkeypatch.setattr(db_mod, "http_get_json", lambda url, token: (payload, None))
 
         models, reason = db_mod.discover_codex_models(WS, "token")
 
@@ -503,6 +495,45 @@ class TestModelServicesCache:
         db_mod.list_model_services(WS, "tok")
         db_mod.list_model_services("https://other.databricks.com", "tok")
         assert calls["n"] == 2
+
+    def test_partial_pagination_returns_reason_and_is_not_cached(self, monkeypatch):
+        calls = {"n": 0}
+
+        def partial(url, token):
+            calls["n"] += 1
+            if "page_token=" not in url:
+                return {
+                    "model_services": [_model_service("system.ai.gpt-5")],
+                    "next_page_token": "next",
+                }, None
+            return None, "HTTP 500 Server Error"
+
+        db_mod.clear_model_services_cache()
+        monkeypatch.setattr(db_mod, "_get_model_services_page", partial)
+
+        first, reason = db_mod.list_model_services(WS, "tok")
+        second, second_reason = db_mod.list_model_services(WS, "tok")
+
+        assert first == second == ["system.ai.gpt-5"]
+        assert reason == second_reason == "HTTP 500 Server Error"
+        assert calls["n"] == 4
+
+    def test_repeated_page_token_marks_result_partial(self, monkeypatch):
+        monkeypatch.setattr(
+            db_mod,
+            "_get_model_services_page",
+            lambda url, token: (
+                {
+                    "model_services": [_model_service("system.ai.gpt-5")],
+                    "next_page_token": "same",
+                },
+                None,
+            ),
+        )
+
+        _, reason = db_mod.list_model_services(WS, "tok", use_cache=False)
+
+        assert reason is not None and "repeated" in reason
 
     def test_failures_are_not_cached(self, monkeypatch):
         # A transient error must not poison the rest of the process into believing there are no

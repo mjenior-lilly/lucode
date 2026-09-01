@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import re
+from contextlib import nullcontext
 from unittest.mock import patch
 
 import pytest
@@ -740,9 +741,9 @@ class TestFetchManagedConfig:
     def test_fetches_fresh_when_enabled(self, monkeypatch):
         monkeypatch.setenv("ENABLE_MANAGED_AGENT_CONFIG", "1")
         monkeypatch.setattr(
-            "ucode.cli.refresh_managed_config", lambda state: {"enabled_agents": {}}
+            "ucode.cli.refresh_managed_config", lambda state: ({"enabled_agents": {}}, None)
         )
-        assert self._fetch({"workspace": "https://w"}) == {"enabled_agents": {}}
+        assert self._fetch({"workspace": "https://w"}) == ({"enabled_agents": {}}, None)
 
     @pytest.mark.parametrize("env_value", [None, "", "0", "off", "no"])
     def test_disabled_reads_nothing_at_all(self, monkeypatch, env_value):
@@ -756,7 +757,7 @@ class TestFetchManagedConfig:
                 f"ucode.cli.{name}",
                 lambda *a, called=name, **k: pytest.fail(f"{called} must not run when disabled"),
             )
-        assert self._fetch({"workspace": "https://w"}) is None
+        assert self._fetch({"workspace": "https://w"}) == (None, None)
 
     def test_skip_preflight_reads_the_cache_without_fetching(self, monkeypatch):
         # Headless launchers pass --skip-preflight to avoid per-launch network calls.
@@ -765,14 +766,36 @@ class TestFetchManagedConfig:
             "ucode.cli.refresh_managed_config", lambda state: pytest.fail("should not fetch")
         )
         monkeypatch.setattr("ucode.cli.load_managed_state", lambda ws: {"enabled_agents": {}})
-        assert self._fetch({"workspace": "https://w"}, skip_preflight=True) == {
-            "enabled_agents": {}
-        }
+        assert self._fetch({"workspace": "https://w"}, skip_preflight=True) == (
+            {"enabled_agents": {}},
+            None,
+        )
 
     def test_skip_preflight_with_an_empty_cache_is_none(self, monkeypatch):
         monkeypatch.setenv("ENABLE_MANAGED_AGENT_CONFIG", "1")
         monkeypatch.setattr("ucode.cli.load_managed_state", lambda ws: {})
-        assert self._fetch({"workspace": "https://w"}, skip_preflight=True) is None
+        assert self._fetch({"workspace": "https://w"}, skip_preflight=True) == (None, None)
+
+    def test_bare_launch_reports_read_failure_instead_of_absence(self, monkeypatch, capsys):
+        import ucode.cli as cli_mod
+
+        monkeypatch.setenv("ENABLE_MANAGED_AGENT_CONFIG", "1")
+        monkeypatch.setattr(cli_mod, "install_databricks_cli", lambda: None)
+        monkeypatch.setattr(cli_mod, "load_state", lambda: {"workspace": "https://w"})
+        monkeypatch.setattr(cli_mod, "apply_pat_environment", lambda state: None)
+        monkeypatch.setattr(cli_mod, "spinner", lambda *_: nullcontext())
+        monkeypatch.setattr(
+            cli_mod, "refresh_managed_config", lambda state: (None, "HTTP 500 Server Error")
+        )
+
+        cli_mod._launch_managed_default(
+            object(), dry_run=False, skip_preflight=False, workspace=None
+        )
+
+        output = capsys.readouterr().out
+        assert "Could not read" in output
+        assert "HTTP 500" in output
+        assert "Run `ucode <agent>`" in output
 
 
 class TestConfigureDeprecation:

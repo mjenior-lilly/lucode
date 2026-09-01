@@ -11,6 +11,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import cast
 
+from ucode.agents import TOOL_SPECS
 from ucode.databricks.auth import (
     apply_pat_environment,
     ensure_databricks_auth,
@@ -135,7 +136,9 @@ def parse_usage_rows(columns: list[str], rows: list[tuple]) -> list[dict[str, ob
 
 
 def configured_usage_tools(state: dict, tool_displays: dict[str, str]) -> list[str]:
-    configured = state.get("available_tools") or state.get("managed_configs", {}).keys()
+    configured = state.get("available_tools")
+    if configured is None:
+        configured = state.get("managed_configs", {}).keys()
     if not isinstance(configured, list):
         configured = list(configured)
     return [tool for tool in tool_displays if tool in configured]
@@ -502,9 +505,6 @@ def _query_with_progress(
 
 
 def usage(warehouse_id: str | None = None) -> int:
-    # Late import to avoid circular import (agents → state, but usage uses TOOL_SPECS for displays).
-    from ucode.agents import TOOL_SPECS
-
     state = load_state()
     workspace = state.get("workspace")
     if not workspace:

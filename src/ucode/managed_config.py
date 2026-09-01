@@ -278,7 +278,7 @@ def get_managed_config(workspace: str, token: str) -> tuple[dict | None, str | N
 def _is_not_found(reason: str) -> bool:
     """True when a read failure reason means the workspace definitively has no managed config.
 
-    ``_http_get_json`` formats failures as ``HTTP <code> <text>[: <body>]``; a NOT_FOUND surfaces
+    ``http_get_json`` formats failures as ``HTTP <code> <text>[: <body>]``; a NOT_FOUND surfaces
     as an ``HTTP 404`` there (and the API's error body carries ``NOT_FOUND``)."""
     lowered = reason.lower()
     return "http 404" in lowered or "not_found" in lowered
@@ -344,21 +344,17 @@ def load_managed_state(workspace: str | None) -> dict | None:
     return config if isinstance(config, dict) else None
 
 
-def refresh_managed_config(state: dict) -> dict | None:
-    """Fetch the workspace's managed config and persist it, returning the normalized manifest.
+def refresh_managed_config(state: dict) -> tuple[dict | None, str | None]:
+    """Fetch and persist the workspace's managed config.
 
-    Runs on every launch so a developer picks up an admin's edits without re-running
-    ``ucode configure``. Returns None when the workspace has no managed config — the normal case for
-    a workspace whose admin hasn't published one.
-
-    A failed fetch never blocks the launch: an unreachable control plane shouldn't stop someone from
-    coding. Instead it falls back to the last config persisted for this workspace, so the admin's
-    most recent known policy still applies; only when there is no persisted config either does the
-    launch fall through to the developer's own settings.
+    Returns ``(config, reason)``. A successful absence is ``(None, None)``;
+    failures preserve their reason even when the last persisted config is used.
+    Fetch failures remain fail-open so an unreachable control plane does not
+    stop a launch, but callers can distinguish them from authoritative absence.
     """
     workspace = state.get("workspace")
     if not workspace:
-        return None
+        return None, None
     try:
         token = get_databricks_token(workspace, state.get("profile"))
     except RuntimeError as exc:
@@ -373,25 +369,25 @@ def refresh_managed_config(state: dict) -> dict | None:
         # the file doubles as the fallback above, so a removed policy would otherwise come back
         # into force after the next transient outage.
         save_managed_state(workspace, {})
-        return None
+        return None, None
     save_managed_state(workspace, managed)
-    return managed
+    return managed, None
 
 
-def _persisted_fallback(workspace: str, reason: str, *, refused: bool = False) -> dict | None:
-    """Return the last persisted config for ``workspace`` after a failed fetch.
+def _persisted_fallback(
+    workspace: str, reason: str, *, refused: bool = False
+) -> tuple[dict | None, str]:
+    """Return the last persisted config and preserve the failed fetch reason.
 
-    Warns only when there is a config to fall back on, because then the launch proceeds on an admin
-    policy that may be out of date. With nothing persisted there is no managed config in play at
-    all, so staying quiet keeps someone with (say) an expired session from being told about a
-    feature they don't use — including when the read was ``refused``, since a refusal is no evidence
-    that a config exists.
+    This helper warns when stale policy is applied. With no saved config, the
+    caller owns the warning because only it knows whether the launch can
+    continue with local settings or needs managed-default guidance.
     """
     # An empty persisted config means the last successful read found none, so there is no admin
     # policy to fall back to — treat it the same as having no file at all.
     persisted = load_managed_state(workspace)
     if not persisted:
-        return None
+        return None, reason
     summary = _summarize_read_failure(reason)
     if refused:
         print_warning(
@@ -403,13 +399,13 @@ def _persisted_fallback(workspace: str, reason: str, *, refused: bool = False) -
             f"Could not read your workspace's managed config ({summary}); "
             "using the last one saved for this workspace."
         )
-    return persisted
+    return persisted, reason
 
 
 def _summarize_read_failure(reason: str) -> str:
     """Condense a read failure into one short line fit for a terminal warning.
 
-    ``_http_get_json`` appends the raw response body, which for a gateway error is a multi-line JSON
+    ``http_get_json`` appends the raw response body, which for a gateway error is a multi-line JSON
     blob (error_code, message, request_id, trace ids). Surface just the status and the API's own
     message; the full text is still available under ``UCODE_DEBUG=1``.
     """

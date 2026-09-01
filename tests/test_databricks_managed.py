@@ -86,7 +86,7 @@ class TestCodingAgentConfigCrudClients:
             seen.update(url=url, payload=payload)
             return {"name": "coding-agent-configs/new"}, None
 
-        monkeypatch.setattr(db_mod, "_http_post_json", fake_post)
+        monkeypatch.setattr(db_mod, "http_post_json", fake_post)
         config, reason = db_mod.create_coding_agent_config(WS, "tok", self.CONFIG)
         assert reason is None
         assert config == {"name": "coding-agent-configs/new"}
@@ -96,7 +96,7 @@ class TestCodingAgentConfigCrudClients:
     def test_create_surfaces_the_failure_reason(self, monkeypatch):
         monkeypatch.setattr(
             db_mod,
-            "_http_post_json",
+            "http_post_json",
             lambda *a, **k: (None, 'HTTP 400: {"error_code":"ALREADY_EXISTS"}'),
         )
         config, reason = db_mod.create_coding_agent_config(WS, "tok", self.CONFIG)
@@ -110,7 +110,7 @@ class TestCodingAgentConfigCrudClients:
             seen.update(url=url, payload=payload)
             return {"name": "coding-agent-configs/abc"}, None
 
-        monkeypatch.setattr(db_mod, "_http_patch_json", fake_patch)
+        monkeypatch.setattr(db_mod, "http_patch_json", fake_patch)
         config, reason = db_mod.update_coding_agent_config(
             WS, "tok", "coding-agent-configs/abc", self.CONFIG
         )
@@ -169,12 +169,12 @@ class TestCodingAgentConfigCrudClients:
             seen["url"] = url
             return None, None
 
-        monkeypatch.setattr(db_mod, "_http_delete", fake_delete)
+        monkeypatch.setattr(db_mod, "http_delete", fake_delete)
         assert db_mod.delete_coding_agent_config(WS, "tok", "coding-agent-configs/abc") is None
         assert seen["url"] == f"{WS}/api/ai-gateway/v2/coding-agent-configs/abc"
 
     def test_delete_surfaces_the_failure_reason(self, monkeypatch):
-        monkeypatch.setattr(db_mod, "_http_delete", lambda *a, **k: (None, "HTTP 404 Not Found"))
+        monkeypatch.setattr(db_mod, "http_delete", lambda *a, **k: (None, "HTTP 404 Not Found"))
         reason = db_mod.delete_coding_agent_config(WS, "tok", "coding-agent-configs/abc")
         assert reason == "HTTP 404 Not Found"
 
@@ -183,7 +183,7 @@ class TestResolveCurrentBudgetSpend:
     def test_parses_spend_and_threshold(self, monkeypatch):
         monkeypatch.setattr(
             db_mod,
-            "_http_post_json",
+            "http_post_json",
             lambda url, token, payload, timeout=10: (
                 {"current_spend": "12.34", "effective_threshold": "100"},
                 None,
@@ -201,7 +201,7 @@ class TestResolveCurrentBudgetSpend:
             captured["payload"] = payload
             return {"current_spend": "1", "effective_threshold": "2"}, None
 
-        monkeypatch.setattr(db_mod, "_http_post_json", fake_post)
+        monkeypatch.setattr(db_mod, "http_post_json", fake_post)
         resolve_current_budget_spend("https://ws.example.com", "token")
         assert captured["url"] == (f"https://ws.example.com{CODING_AGENT_RECOMMEND_MODEL_PATH}")
         # Empty list applies no availability filter; we want the spend only.
@@ -210,7 +210,7 @@ class TestResolveCurrentBudgetSpend:
     def test_ignores_recommended_models(self, monkeypatch):
         monkeypatch.setattr(
             db_mod,
-            "_http_post_json",
+            "http_post_json",
             lambda url, token, payload, timeout=10: (
                 {
                     "recommended_models": ["system.ai.claude-sonnet-4-5"],
@@ -229,7 +229,7 @@ class TestResolveCurrentBudgetSpend:
         # spend fields come back unset.
         monkeypatch.setattr(
             db_mod,
-            "_http_post_json",
+            "http_post_json",
             lambda url, token, payload, timeout=10: (
                 {"recommended_models": ["system.ai.claude-sonnet-4-5"]},
                 None,
@@ -242,7 +242,7 @@ class TestResolveCurrentBudgetSpend:
     def test_feature_disabled_returns_reason(self, monkeypatch):
         monkeypatch.setattr(
             db_mod,
-            "_http_post_json",
+            "http_post_json",
             lambda url, token, payload, timeout=10: (
                 None,
                 "HTTP 400 Bad Request: FEATURE_DISABLED",
@@ -254,7 +254,7 @@ class TestResolveCurrentBudgetSpend:
 
     def test_unset_fields_treated_as_no_spend(self, monkeypatch):
         monkeypatch.setattr(
-            db_mod, "_http_post_json", lambda url, token, payload, timeout=10: ({}, None)
+            db_mod, "http_post_json", lambda url, token, payload, timeout=10: ({}, None)
         )
         spend, reason = resolve_current_budget_spend("https://ws", "token")
         assert spend is None
@@ -263,7 +263,7 @@ class TestResolveCurrentBudgetSpend:
     def test_spend_without_threshold_is_no_spend(self, monkeypatch):
         monkeypatch.setattr(
             db_mod,
-            "_http_post_json",
+            "http_post_json",
             lambda url, token, payload, timeout=10: ({"current_spend": "12.34"}, None),
         )
         spend, _ = resolve_current_budget_spend("https://ws", "token")
@@ -272,7 +272,7 @@ class TestResolveCurrentBudgetSpend:
     def test_malformed_decimal_is_no_spend(self, monkeypatch):
         monkeypatch.setattr(
             db_mod,
-            "_http_post_json",
+            "http_post_json",
             lambda url, token, payload, timeout=10: (
                 {"current_spend": "not-a-number", "effective_threshold": "100"},
                 None,
@@ -283,7 +283,7 @@ class TestResolveCurrentBudgetSpend:
 
     def test_non_object_payload_is_no_spend(self, monkeypatch):
         monkeypatch.setattr(
-            db_mod, "_http_post_json", lambda url, token, payload, timeout=10: ([], None)
+            db_mod, "http_post_json", lambda url, token, payload, timeout=10: ([], None)
         )
         spend, reason = resolve_current_budget_spend("https://ws", "token")
         assert spend is None

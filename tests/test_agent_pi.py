@@ -11,6 +11,15 @@ from ucode.agents import pi
 WS = "https://example.databricks.com"
 
 
+class _StopAfter:
+    def __init__(self, ticks: int):
+        self.ticks = ticks
+
+    def wait(self, _timeout):
+        self.ticks -= 1
+        return self.ticks < 0
+
+
 def _base_urls() -> dict[str, str]:
     # Native API per family — see agents/pi.py docstring for path conventions.
     return {
@@ -18,6 +27,25 @@ def _base_urls() -> dict[str, str]:
         "openai": f"{WS}/ai-gateway/codex/v1",
         "gemini": f"{WS}/ai-gateway/gemini/v1beta",
     }
+
+
+def test_refresh_failure_warns_once_while_retries_continue(monkeypatch):
+    attempts = 0
+    warnings: list[str] = []
+
+    def fail(*args, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        raise RuntimeError("expired token")
+
+    monkeypatch.setattr(pi, "_refresh_token_once", fail)
+    monkeypatch.setattr(pi, "print_warning", warnings.append)
+
+    pi._refresh_forever({}, _StopAfter(3))
+
+    assert attempts == 3
+    assert len(warnings) == 1
+    assert "expired token" in warnings[0]
 
 
 def _empty() -> dict:

@@ -1071,15 +1071,6 @@ dependencies = [
 sdist = { url = "https://elilillyco.jfrog.io/artifactory/api/pypi/Lilly-Python/packages/packages/3c/2d/8946864f716ac82dcc88d290ed613cba7a80ec75df4f553ec3ff275f486e/thrift-0.20.0.tar.gz", hash = "sha256:4dd662eadf6b8aebe8a41729527bd69adf6ceaa2a8681cbef64d1273b3e8feba" }
 
 [[package]]
-name = "tomlkit"
-version = "0.14.0"
-source = { registry = "https://elilillyco.jfrog.io/artifactory/api/pypi/Lilly-Python/simple" }
-sdist = { url = "https://elilillyco.jfrog.io/artifactory/api/pypi/Lilly-Python/packages/packages/c3/af/14b24e41977adb296d6bd1fb59402cf7d60ce364f90c890bd2ec65c43b5a/tomlkit-0.14.0.tar.gz", hash = "sha256:cf00efca415dbd57575befb1f6634c4f42d2d87dbba376128adb42c121b87064" }
-wheels = [
-    { url = "https://elilillyco.jfrog.io/artifactory/api/pypi/Lilly-Python/packages/packages/b5/11/87d6d29fb5d237229d67973a6c9e06e048f01cf4994dee194ab0ea841814/tomlkit-0.14.0-py3-none-any.whl", hash = "sha256:592064ed85b40fa213469f81ac584f67a4f2992509a7c3ea2d632208623a3680" },
-]
-
-[[package]]
 name = "ty"
 version = "0.0.33"
 source = { registry = "https://elilillyco.jfrog.io/artifactory/api/pypi/Lilly-Python/simple" }
@@ -1158,8 +1149,6 @@ dependencies = [
     { name = "mcp" },
     { name = "prompt-toolkit" },
     { name = "questionary" },
-    { name = "rich" },
-    { name = "tomlkit" },
     { name = "typer" },
 ]
 
@@ -1178,8 +1167,6 @@ requires-dist = [
     { name = "mcp", specifier = ">=1.28.0" },
     { name = "prompt-toolkit", specifier = ">=2.0,<4.0" },
     { name = "questionary", specifier = ">=2.0.0" },
-    { name = "rich", specifier = ">=12.3.0" },
-    { name = "tomlkit", specifier = ">=0.13.0" },
     { name = "typer", specifier = ">=0.12.0" },
 ]
 

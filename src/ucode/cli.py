@@ -460,6 +460,15 @@ def configure_shared_state(
     codex_models = []
     oss_models = []
     opencode_models: dict[str, list[str]] = {}
+    model_services_partial = False
+    persisted_model_keys = (
+        "claude_models",
+        "gemini_models",
+        "codex_models",
+        "oss_models",
+        "opencode_models",
+    )
+    prior_model_values = {key: state[key] for key in persisted_model_keys if key in state}
     if not skip_model_discovery:
         # UC-first, best-effort: one UC model-services call yields all families
         # as `system.ai.<model-name>` ids, bucketed by name. If a family comes
@@ -469,6 +478,9 @@ def configure_shared_state(
         with spinner("Fetching available models..."):
             ms_claude, ms_codex, ms_gemini, ms_oss, ms_reason = discover_model_services(
                 workspace, token
+            )
+            model_services_partial = bool(
+                ms_reason and (ms_claude or ms_codex or ms_gemini or ms_oss)
             )
             if want_claude:
                 claude_models, claude_reason = ms_claude, ms_reason
@@ -491,6 +503,11 @@ def configure_shared_state(
             opencode_models["gemini"] = gemini_models
         if oss_models:
             opencode_models["oss"] = oss_models
+        if model_services_partial:
+            print_warning(
+                f"Model-service discovery was incomplete: {ms_reason}. "
+                "Using partial results for this run without replacing saved model lists."
+            )
 
     if not skip_model_discovery:
         if want_claude:
@@ -503,7 +520,16 @@ def configure_shared_state(
             state["oss_models"] = oss_models
         if fetch_all or "opencode" in tools:
             state["opencode_models"] = opencode_models
-    save_state(state)
+    if model_services_partial:
+        state_to_save = state.copy()
+        for key in persisted_model_keys:
+            if key in prior_model_values:
+                state_to_save[key] = prior_model_values[key]
+            else:
+                state_to_save.pop(key, None)
+        save_state(state_to_save)
+    else:
+        save_state(state)
     # Scrub MCP entries that ucode wrote for the previous workspace so the new
     # workspace's agent configs aren't stale.
     if previous_workspace and previous_workspace != workspace:
@@ -811,6 +837,7 @@ app.add_typer(
 
 def _version_callback(value: bool) -> None:
     if value:
+        # Keep version-only startup independent of telemetry's optional runtime work.
         from ucode.telemetry import ucode_version
 
         print(ucode_version())
@@ -843,6 +870,7 @@ def mcp_proxy_cmd(
     configured OAuth credential or a PAT activated once before startup. OAuth
     tokens are refreshed through the normal token path per request. Not meant
     for interactive use — the agent manages this process's lifecycle."""
+    # The proxy server stack is needed only for this hidden subprocess command.
     from ucode.mcp_proxy import serve
 
     state = load_state()
@@ -957,16 +985,16 @@ def _reject_disabled_agent(managed: dict | None, tool: str) -> None:
         )
 
 
-def _fetch_managed_config(state: dict, *, skip_preflight: bool) -> dict | None:
-    """The workspace's managed config for this launch, or None when there is none.
+def _fetch_managed_config(state: dict, *, skip_preflight: bool) -> tuple[dict | None, str | None]:
+    """Return the launch config and any reason its workspace read failed.
 
     ``skip_preflight`` mirrors the launch flag: it reads the last persisted copy instead of
     re-fetching, so the config can be stale until a normal launch refreshes it.
     """
     if not managed_agent_config_enabled():
-        return None
+        return None, None
     if skip_preflight:
-        return load_managed_state(state.get("workspace")) or None
+        return load_managed_state(state.get("workspace")) or None, None
     with spinner("Checking for a managed coding agent config..."):
         return refresh_managed_config(state)
 
@@ -1062,8 +1090,11 @@ def _launch_tool(
         if needs_auto_configure:
             _auto_configure_tool(tool)
         state = ensure_provider_state(tool)
+        managed_read_reason: str | None = None
         if managed is None:
-            managed = _fetch_managed_config(state, skip_preflight=skip_preflight)
+            managed, managed_read_reason = _fetch_managed_config(
+                state, skip_preflight=skip_preflight
+            )
         _reject_disabled_agent(managed, tool)
         state = configure_shared_state(
             state["workspace"],
@@ -1086,6 +1117,11 @@ def _launch_tool(
                     f"Your workspace's managed config lists no {TOOL_SPECS[tool]['display']}-servable "
                     f"models ({', '.join(unservable)}); using your discovered models instead."
                 )
+        elif managed_read_reason:
+            print_warning(
+                "Could not read your workspace's managed coding agent config "
+                f"({managed_read_reason}); using your own settings."
+            )
         elif managed_agent_config_enabled():
             print_note("No managed coding agent config found; using your own settings")
         managed_model = (
@@ -1211,11 +1247,12 @@ def _launch_managed_default(
             "to pick an agent from. Run `ucode <agent> --skip-preflight` instead."
         )
     # --dry-run avoids the fetch but still applies the last saved config.
+    managed_read_reason: str | None = None
     if dry_run:
         managed = load_managed_state(current)
     else:
         with spinner("Checking for a managed coding agent config..."):
-            managed = refresh_managed_config(state)
+            managed, managed_read_reason = refresh_managed_config(state)
     if not managed:
         # Only a read that actually reached the workspace can say it publishes no config. Under
         # --dry-run nothing was fetched, so an empty cache means "not pulled yet" — reporting that
@@ -1224,6 +1261,13 @@ def _launch_managed_default(
             print_warning(
                 "No managed coding agent config is saved locally yet, so there is nothing to "
                 "dry-run. Run `ucode` without --dry-run to pull your workspace's config first."
+            )
+            return
+        if managed_read_reason:
+            print_warning(
+                "Could not read your workspace's managed coding agent config "
+                f"({managed_read_reason}); unable to choose a default agent. "
+                "Run `ucode <agent>` to continue with your own settings."
             )
             return
         _print_no_managed_config_guidance(current, state.get("profile"))
@@ -1639,7 +1683,11 @@ def setup(
     # `except RuntimeError` below would swallow it and report the exit code as an error message.
     try:
         install_databricks_cli()
-        code = setup_command(from_file=from_file)
+        code = setup_command(
+            from_file=from_file,
+            prompt_for_configuration=_prompt_for_configuration,
+            configure_state=configure_shared_state,
+        )
     except RuntimeError as exc:
         print_err(str(exc))
         raise typer.Exit(1) from None
@@ -1679,7 +1727,7 @@ def apply_cmd(
     # the try block or the handler below would report a successful exit as an error.
     try:
         install_databricks_cli()
-        code = apply_command(yes=yes)
+        code = apply_command(yes=yes, prompt_for_configuration=_prompt_for_configuration)
     except RuntimeError as exc:
         print_err(str(exc))
         raise typer.Exit(1) from None

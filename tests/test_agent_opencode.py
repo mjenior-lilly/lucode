@@ -10,12 +10,40 @@ from ucode.agents import opencode
 WS = "https://example.databricks.com"
 
 
+class _StopAfter:
+    def __init__(self, ticks: int):
+        self.ticks = ticks
+
+    def wait(self, _timeout):
+        self.ticks -= 1
+        return self.ticks < 0
+
+
 def _base_urls() -> dict[str, str]:
     return {
         "anthropic": f"{WS}/ai-gateway/anthropic/v1",
         "gemini": f"{WS}/ai-gateway/gemini/v1beta",
         "oss": f"{WS}/ai-gateway/mlflow/v1",
     }
+
+
+def test_refresh_failure_warns_once_while_retries_continue(monkeypatch):
+    attempts = 0
+    warnings: list[str] = []
+
+    def fail(*args, **kwargs):
+        nonlocal attempts
+        attempts += 1
+        raise RuntimeError("expired token")
+
+    monkeypatch.setattr(opencode, "_refresh_token_once", fail)
+    monkeypatch.setattr(opencode, "print_warning", warnings.append)
+
+    opencode._refresh_forever({}, _StopAfter(3))
+
+    assert attempts == 3
+    assert len(warnings) == 1
+    assert "expired token" in warnings[0]
 
 
 class TestOpencodeSpec:

@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import re
+import shutil
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.parse import urlencode
 
 from ucode.databricks.auth import get_databricks_token
-from ucode.databricks.transport import _http_get_bytes, _http_get_json, workspace_hostname
+from ucode.databricks.transport import http_get_bytes, http_get_json, workspace_hostname
 from ucode.mcp import register_schemaless_skills_connection, setup_mcp_clients
 from ucode.state import load_state
 from ucode.ui import (
@@ -64,7 +65,7 @@ def list_schema_skills(
     while True:
         if page_token:
             query["page_token"] = page_token
-        payload, reason = _http_get_json(f"{base_url}?{urlencode(query)}", token, timeout=30)
+        payload, reason = http_get_json(f"{base_url}?{urlencode(query)}", token, timeout=30)
         if payload is None:
             return [], reason
         data = payload if isinstance(payload, dict) else {}
@@ -98,7 +99,7 @@ def list_skill_files(
             url = f"{dirs_base}/{directory}"
             if page_token:
                 url = f"{url}?{urlencode({'page_token': page_token})}"
-            payload, reason = _http_get_json(url, token, timeout=30)
+            payload, reason = http_get_json(url, token, timeout=30)
             if payload is None:
                 return [], reason
             data = payload if isinstance(payload, dict) else {}
@@ -122,7 +123,7 @@ def fetch_skill_file(
     """Fetch one skill bundle file's raw bytes from its UC Volume."""
     hostname = workspace_hostname(workspace)
     url = f"https://{hostname}/api/2.0/fs/files/Volumes/{catalog}/{schema}/{leaf}/{relative_path}"
-    return _http_get_bytes(url, token, timeout=30)
+    return http_get_bytes(url, token, timeout=30)
 
 
 def fetch_skill_bundle(
@@ -211,8 +212,25 @@ def write_skill(roots: list[Path], leaf: str, files: dict[str, bytes], *, locati
         print_note(f"Kept existing `{leaf}`.")
         return False
 
+    # Do not delete an existing skill when the server returned no writable
+    # files. This also covers bundles whose entries are all unsafe paths.
+    if not any(_safe_relative_path(relative_path) is not None for relative_path in files):
+        print_warning(f"Skipping `{leaf}`: the bundle has no files to write.")
+        return False
+
+    # Re-check immediately before the destructive overwrite boundary. The
+    # deleted path is always the approved root plus this validated leaf; bundle
+    # paths never influence it.
+    if not _is_valid_leaf(leaf):
+        print_warning(f"Skipping `{leaf}`: not a valid skill name (lowercase a-z, 0-9, -).")
+        return False
     for root in roots:
-        _write_bundle(root / leaf, leaf, files)
+        skill_dir = root / leaf
+        if skill_dir.is_symlink() or (skill_dir.exists() and not skill_dir.is_dir()):
+            skill_dir.unlink()
+        elif skill_dir.is_dir():
+            shutil.rmtree(skill_dir)
+        _write_bundle(skill_dir, leaf, files)
     return True
 
 

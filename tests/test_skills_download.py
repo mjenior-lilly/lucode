@@ -28,7 +28,7 @@ class TestListSchemaSkills:
                 {"name": "skills/main.default.draft", "bundle_name": "draft"},
             ]
         }
-        monkeypatch.setattr(sd, "_http_get_json", lambda url, token, timeout=30: (payload, None))
+        monkeypatch.setattr(sd, "http_get_json", lambda url, token, timeout=30: (payload, None))
 
         leaves, reason = sd.list_schema_skills(WS, "token", "main", "default")
 
@@ -44,7 +44,7 @@ class TestListSchemaSkills:
                 }
             ]
         }
-        monkeypatch.setattr(sd, "_http_get_json", lambda url, token, timeout=30: (payload, None))
+        monkeypatch.setattr(sd, "http_get_json", lambda url, token, timeout=30: (payload, None))
 
         leaves, reason = sd.list_schema_skills(WS, "token", "main", "default")
 
@@ -62,7 +62,7 @@ class TestListSchemaSkills:
             captured_tokens.append("page_token=tok" in url)
             return pages.pop(0), None
 
-        monkeypatch.setattr(sd, "_http_get_json", fake_get)
+        monkeypatch.setattr(sd, "http_get_json", fake_get)
 
         leaves, reason = sd.list_schema_skills(WS, "token", "main", "default")
 
@@ -77,7 +77,7 @@ class TestListSchemaSkills:
             captured["url"] = url
             return {"skills": []}, None
 
-        monkeypatch.setattr(sd, "_http_get_json", fake_get)
+        monkeypatch.setattr(sd, "http_get_json", fake_get)
 
         sd.list_schema_skills(WS, "token", "main", "default")
 
@@ -86,7 +86,7 @@ class TestListSchemaSkills:
 
     def test_http_failure_propagates_reason(self, monkeypatch):
         monkeypatch.setattr(
-            sd, "_http_get_json", lambda url, token, timeout=30: (None, "HTTP 500 Server Error")
+            sd, "http_get_json", lambda url, token, timeout=30: (None, "HTTP 500 Server Error")
         )
 
         leaves, reason = sd.list_schema_skills(WS, "token", "main", "default")
@@ -115,7 +115,7 @@ class TestListSkillFiles:
             directory = url.split("/api/2.0/fs/directories/", 1)[1]
             return listings[directory], None
 
-        monkeypatch.setattr(sd, "_http_get_json", fake_get)
+        monkeypatch.setattr(sd, "http_get_json", fake_get)
 
         paths, reason = sd.list_skill_files(WS, "token", "main", "default", "triage")
 
@@ -133,7 +133,7 @@ class TestListSkillFiles:
         ]
 
         monkeypatch.setattr(
-            sd, "_http_get_json", lambda url, token, timeout=30: (pages.pop(0), None)
+            sd, "http_get_json", lambda url, token, timeout=30: (pages.pop(0), None)
         )
 
         paths, reason = sd.list_skill_files(WS, "token", "main", "default", "triage")
@@ -143,7 +143,7 @@ class TestListSkillFiles:
 
     def test_http_failure_propagates_reason(self, monkeypatch):
         monkeypatch.setattr(
-            sd, "_http_get_json", lambda url, token, timeout=30: (None, "HTTP 404 Not Found")
+            sd, "http_get_json", lambda url, token, timeout=30: (None, "HTTP 404 Not Found")
         )
 
         paths, reason = sd.list_skill_files(WS, "token", "main", "default", "triage")
@@ -160,7 +160,7 @@ class TestFetchSkillFile:
             captured["url"] = url
             return b"# SKILL\n", None
 
-        monkeypatch.setattr(sd, "_http_get_bytes", fake_get_bytes)
+        monkeypatch.setattr(sd, "http_get_bytes", fake_get_bytes)
 
         body, reason = sd.fetch_skill_file(WS, "token", "main", "default", "triage", "SKILL.md")
 
@@ -170,7 +170,7 @@ class TestFetchSkillFile:
 
     def test_http_failure_propagates_reason(self, monkeypatch):
         monkeypatch.setattr(
-            sd, "_http_get_bytes", lambda url, token, timeout=30: (None, "HTTP 404 Not Found")
+            sd, "http_get_bytes", lambda url, token, timeout=30: (None, "HTTP 404 Not Found")
         )
 
         body, reason = sd.fetch_skill_file(WS, "token", "main", "default", "triage", "gone.md")
@@ -263,12 +263,51 @@ class TestWriteSkill:
 
     def test_existing_skill_prompt_overwrite(self, tmp_path, monkeypatch):
         roots = skill_dir_roots(str(tmp_path))
-        _write(roots, "triage", {"SKILL.md": b"from-main"}, location="main.default")
+        _write(
+            roots,
+            "triage",
+            {"SKILL.md": b"from-main", "stale.txt": b"remove-me"},
+            location="main.default",
+        )
 
         monkeypatch.setattr(sd, "prompt_yes_no", lambda _: True)
         _write(roots, "triage", {"SKILL.md": b"from-ml"}, location="ml.prod")
 
         assert (roots[0] / "triage/SKILL.md").read_bytes() == b"from-ml"
+        assert not (roots[0] / "triage/stale.txt").exists()
+
+    def test_empty_overwrite_bundle_keeps_existing_skill(self, tmp_path, monkeypatch):
+        roots = skill_dir_roots(str(tmp_path))
+        _write(roots, "triage", {"SKILL.md": b"keep"})
+
+        monkeypatch.setattr(sd, "prompt_yes_no", lambda _: True)
+        assert not _write(roots, "triage", {}, location="ml.prod")
+
+        assert (roots[0] / "triage/SKILL.md").read_bytes() == b"keep"
+
+    def test_all_unsafe_overwrite_bundle_keeps_existing_skill(self, tmp_path, monkeypatch):
+        roots = skill_dir_roots(str(tmp_path))
+        _write(roots, "triage", {"SKILL.md": b"keep"})
+
+        monkeypatch.setattr(sd, "prompt_yes_no", lambda _: True)
+        assert not _write(roots, "triage", {"../escape.md": b"unsafe"}, location="ml.prod")
+
+        assert (roots[0] / "triage/SKILL.md").read_bytes() == b"keep"
+
+    def test_overwrite_unlinks_symlink_without_deleting_target(self, tmp_path, monkeypatch):
+        roots = skill_dir_roots(str(tmp_path))
+        external = tmp_path / "external"
+        external.mkdir()
+        (external / "keep.txt").write_text("keep", encoding="utf-8")
+        roots[0].mkdir(parents=True)
+        (roots[0] / "triage").symlink_to(external, target_is_directory=True)
+
+        monkeypatch.setattr(sd, "prompt_yes_no", lambda _: True)
+        _write(roots, "triage", {"SKILL.md": b"new"})
+
+        assert (external / "keep.txt").read_text(encoding="utf-8") == "keep"
+        assert not (roots[0] / "triage").is_symlink()
+        assert (roots[0] / "triage/SKILL.md").read_bytes() == b"new"
 
     def test_invalid_leaf_is_skipped(self, tmp_path):
         roots = skill_dir_roots(str(tmp_path))

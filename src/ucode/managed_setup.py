@@ -359,15 +359,24 @@ def validate_manifest(manifest: dict, state: dict | None = None) -> list[str]:
                     f"mcp_servers[{index}]: type '{server_type}' is not recognized "
                     f"(valid: {valid})."
                 )
+    elif "mcp_servers" in manifest:
+        errors.append("mcp_servers must be a list.")
 
     skills = manifest.get("skills")
     if isinstance(skills, dict):
         names = skills.get("names")
-        if isinstance(names, list) and any(not isinstance(name, str) or not name for name in names):
-            errors.append("skills.names must not contain empty names.")
+        if isinstance(names, list):
+            if any(not isinstance(name, str) or not name for name in names):
+                errors.append("skills.names must not contain empty names.")
+        elif "names" in skills:
+            errors.append("skills.names must be a list.")
+    elif "skills" in manifest:
+        errors.append("skills must be an object.")
 
     if isinstance(budget_policy, dict):
         errors.extend(_validate_budget_policy(budget_policy, enabled_agents))
+    elif "budget_policy" in manifest:
+        errors.append("budget_policy must be an object.")
 
     return errors
 
@@ -415,6 +424,8 @@ def _validate_budget_policy(budget_policy: dict, enabled_agents: dict[str, dict]
 
     percentages: list[float] = []
     tiers = budget_policy.get("tiers")
+    if "tiers" in budget_policy and not isinstance(tiers, list):
+        errors.append("budget_policy.tiers must be a list.")
     for index, tier in enumerate(tiers if isinstance(tiers, list) else []):
         if not isinstance(tier, dict):
             errors.append(f"budget_policy.tiers[{index}] must be an object.")

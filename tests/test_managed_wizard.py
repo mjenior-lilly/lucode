@@ -476,6 +476,24 @@ class TestSetupFromFile:
             assert wizard.setup_from_file(str(path)) == 1
         assert managed_setup_mod.load_managed_settings(WORKSPACE) is None
 
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"mcp_servers": "not-a-list"},
+            {"skills": {"names": "catalog.schema"}},
+            {"budget_policy": []},
+            {"budget_policy": {"budget_id": BUDGET_ID, "tiers": {}}},
+        ],
+    )
+    def test_malformed_containers_are_not_persisted(self, tmp_path, payload):
+        path = self._write(tmp_path, payload)
+        with (
+            patch.object(wizard, "load_state", return_value=STATE),
+            patch.object(wizard, "save_managed_settings") as save,
+        ):
+            assert wizard.setup_from_file(str(path)) == 1
+        save.assert_not_called()
+
     def test_missing_file_is_actionable(self, tmp_path):
         with patch.object(wizard, "load_state", return_value=STATE):
             with pytest.raises(RuntimeError, match="Could not read manifest file"):

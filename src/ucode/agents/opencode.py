@@ -7,6 +7,7 @@ import signal
 import subprocess
 import threading
 
+from ucode.agent_models import opencode_default_model
 from ucode.agent_updates import available_npm_package_update
 from ucode.config_io import (
     APP_DIR,
@@ -24,6 +25,7 @@ from ucode.databricks.models import (
 )
 from ucode.state import mark_tool_managed, save_state
 from ucode.telemetry import agent_version, ucode_version
+from ucode.ui import print_warning
 
 OPENCODE_XDG_CONFIG_HOME = APP_DIR / "opencode-xdg"
 OPENCODE_CONFIG_DIR = OPENCODE_XDG_CONFIG_HOME / "opencode"
@@ -228,17 +230,7 @@ def remove_mcp_server_config(name: str) -> bool:
 
 
 def default_model(state: dict) -> str | None:
-    if isinstance(state.get("opencode_default_model"), str):
-        return state.get("opencode_default_model")
-    opencode_models = state.get("opencode_models") or {}
-    anthropic = opencode_models.get("anthropic") or []
-    if anthropic:
-        return anthropic[0]
-    gemini = opencode_models.get("gemini") or []
-    if gemini:
-        return gemini[0]
-    oss = opencode_models.get("oss") or []
-    return oss[0] if oss else None
+    return opencode_default_model(state)
 
 
 def _refresh_token_once(state: dict, *, force_refresh: bool = False) -> str:
@@ -250,11 +242,15 @@ def _refresh_token_once(state: dict, *, force_refresh: bool = False) -> str:
 
 
 def _refresh_forever(state: dict, stop_event: threading.Event) -> None:
+    refresh_failing = False
     while not stop_event.wait(TOKEN_REFRESH_INTERVAL_SECONDS):
         try:
             _refresh_token_once(state, force_refresh=True)
-        except RuntimeError:
-            continue
+            refresh_failing = False
+        except RuntimeError as exc:
+            if not refresh_failing:
+                print_warning(f"OpenCode token refresh failed; will retry: {exc}")
+                refresh_failing = True
 
 
 def build_runtime_env(token: str, state: dict | None = None) -> dict[str, str]:
