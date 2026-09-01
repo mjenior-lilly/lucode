@@ -1,4 +1,4 @@
-"""Tests for managed_config.py — fetch/normalize/persist of the admin-authored managed config."""
+"""Tests for lucode.managed.config fetch, normalization, and local persistence."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ import stat
 import pytest
 
 import lucode.databricks.managed as db_mod
-import lucode.managed_config as mc_mod
-from lucode.managed_config import (
+import lucode.managed.config as mc_mod
+from lucode.managed.config import (
     get_managed_config,
     load_managed_state,
     normalize_managed_config,

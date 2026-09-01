@@ -5,7 +5,7 @@ the admin through agents, per-agent models, MCP servers, skills, and a spend-rou
 then writes the manifest to ``~/.lucode/managed-settings.json``. Publishing it to the workspace is
 ``lucode apply`` (a separate command, so an admin can review the file first).
 
-Serialization, validation, and the per-agent model catalogs live in :mod:`lucode.managed_setup`; this
+Serialization, validation, and the per-agent model catalogs live in :mod:`lucode.managed.setup`; this
 module is the interaction layer on top of them. Sub-flows an admin already knows — MCP, skills — are
 delegated to the existing ``lucode configure <thing>`` commands and their results read back out of
 ``state.json``, so there is exactly one picker per concern in the codebase.
@@ -28,8 +28,8 @@ from lucode.databricks.managed import (
     list_workspace_budgets,
     update_coding_agent_config,
 )
-from lucode.managed_config import get_managed_config
-from lucode.managed_setup import (
+from lucode.managed.config import get_managed_config
+from lucode.managed.setup import (
     load_managed_settings,
     model_options_for_agent,
     save_managed_settings,

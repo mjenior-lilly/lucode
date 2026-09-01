@@ -16,10 +16,10 @@ from typer.testing import CliRunner
 
 import lucode.cli as cli_mod
 import lucode.config_io as config_io_mod
-import lucode.managed_setup as managed_setup_mod
-import lucode.managed_wizard as wizard
+import lucode.managed.setup as managed_setup_mod
+import lucode.managed.wizard as wizard
 from lucode.cli import app
-from lucode.managed_setup import validate_manifest
+from lucode.managed.setup import validate_manifest
 
 runner = CliRunner()
 

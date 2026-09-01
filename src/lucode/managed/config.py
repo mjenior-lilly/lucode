@@ -10,8 +10,8 @@ An org admin authors a ``CodingAgentConfig`` through the Databricks AI Gateway; 
 
 :func:`refresh_managed_config` is the launch path's entry point. It is called before model discovery,
 because the manifest decides whether that discovery is needed at all; the launch path then hands the
-manifest to :func:`lucode.managed_resolve.resolve_state` once the state it layers over is final.
-Deciding *which* value wins for a given key is :mod:`lucode.managed_resolve`'s job, kept separate so
+manifest to :func:`lucode.managed.resolve.resolve_state` once the state it layers over is final.
+Deciding *which* value wins for a given key is :mod:`lucode.managed.resolve`'s job, kept separate so
 that logic stays pure and I/O-free.
 """
 
@@ -41,8 +41,8 @@ MANAGED_CONFIG_ENV_VAR = "ENABLE_MANAGED_AGENT_CONFIG"
 
 # CodingAgent proto enum -> lucode tool name. Anything unrecognized (e.g. a newer agent this lucode
 # build doesn't know) is dropped during normalization rather than guessed at. Public because the
-# admin-write side (``managed_setup``) inverts these maps to serialize, so a new agent or MCP type
-# only has to be declared once.
+# admin-write side (:mod:`lucode.managed.setup`) inverts these maps to serialize, so a new agent or
+# MCP type only has to be declared once.
 AGENT_ENUM_TO_TOOL: dict[str, str] = {
     "CODING_AGENT_PI": "pi",
     "CODING_AGENT_OPENCODE": "opencode",

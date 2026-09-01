@@ -35,8 +35,8 @@ import signal
 import subprocess
 import threading
 
-from lucode.agent_models import pi_default_model
-from lucode.agent_updates import available_npm_package_update
+from lucode.agents.models import pi_default_model
+from lucode.agents.updates import available_npm_package_update
 from lucode.config_io import (
     APP_DIR,
     ToolSpec,

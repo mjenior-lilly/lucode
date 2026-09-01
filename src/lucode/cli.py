@@ -48,18 +48,18 @@ from lucode.databricks.models import (
     discover_model_services,
     ensure_ai_gateway_v2,
 )
-from lucode.managed_budget import (
+from lucode.managed.budget import (
     budget_usage_percent,
     recommendation_line,
     render_budget_panel,
 )
-from lucode.managed_config import (
+from lucode.managed.config import (
     get_model_recommendation,
     load_managed_state,
     managed_agent_config_enabled,
     refresh_managed_config,
 )
-from lucode.managed_resolve import (
+from lucode.managed.resolve import (
     managed_default_model,
     managed_enabled_tools,
     managed_launch_model,
@@ -68,7 +68,7 @@ from lucode.managed_resolve import (
     recommended_agent,
     resolve_state,
 )
-from lucode.managed_wizard import apply_command, setup_command, show_command
+from lucode.managed.wizard import apply_command, setup_command, show_command
 from lucode.mcp import (
     MCP_CLIENTS,
     SKILLS_MCP_KIND,
@@ -211,7 +211,9 @@ def _print_discovery_diagnostics(state: dict) -> None:
             print_note(f"{label} (needed for: {consumers}): {reason}")
         else:
             print_note(f"{label} (needed for: {consumers}): no models returned")
-    print_note("Re-run with `lucode_DEBUG=1` to log raw discovery responses to ~/.lucode/debug.log.")
+    print_note(
+        "Re-run with `lucode_DEBUG=1` to log raw discovery responses to ~/.lucode/debug.log."
+    )
 
 
 def _prompt_for_configuration(tool: str | None = None) -> tuple[str, str | None]:
@@ -1779,7 +1781,7 @@ def upgrade_cmd() -> None:
     """Upgrade lucode to the latest version from GitHub."""
     import subprocess
 
-    git_url = "git+https://github.com/databricks/lucode"
+    git_url = "git+https://github.com/mjenior-lilly/lucode"
     print_section("Upgrade")
     print_kv("Source", git_url)
     try:

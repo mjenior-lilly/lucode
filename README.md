@@ -14,7 +14,7 @@ families from your workspace and writes each agent's native configuration.
 ## Installation
 
 ```bash
-uv tool install git+https://github.com/databricks/lucode
+uv tool install git+https://github.com/mjenior-lilly/lucode
 ```
 
 Check the installed revision with `lucode --version`.

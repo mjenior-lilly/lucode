@@ -1,7 +1,7 @@
 """Tests for the admin-write half of the managed coding-agent config (Pi/OpenCode only).
 
 The most valuable case here is the round-trip: ``serialize_managed_config`` followed by
-``managed_config.normalize_managed_config`` must return the manifest it started from. That single
+``managed.config.normalize_managed_config`` must return the manifest it started from. That single
 property pins the write side to the read side, so the two cannot drift as the proto grows.
 """
 
@@ -13,13 +13,13 @@ import stat
 import pytest
 
 import lucode.config_io as config_io_mod
-import lucode.managed_setup as managed_setup_mod
-from lucode.managed_config import (
+import lucode.managed.setup as managed_setup_mod
+from lucode.managed.config import (
     AGENT_ENUM_TO_TOOL,
     MCP_TYPE_ENUM_TO_TAG,
     normalize_managed_config,
 )
-from lucode.managed_setup import (
+from lucode.managed.setup import (
     AGENT_TOOL_TO_ENUM,
     MCP_TAG_TO_TYPE_ENUM,
     load_managed_settings,

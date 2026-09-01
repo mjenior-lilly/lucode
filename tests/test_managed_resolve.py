@@ -1,4 +1,4 @@
-"""Tests for managed_resolve.py — resolving and writing managed agent settings for Pi/OpenCode."""
+"""Tests for lucode.managed.resolve settings resolution for Pi and OpenCode."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import pytest
 import lucode.agents.opencode as opencode
 import lucode.config_io as config_io
 import lucode.state as state_mod
-from lucode.managed_resolve import (
+from lucode.managed.resolve import (
     managed_default_model,
     managed_enabled_tools,
     managed_launch_model,
@@ -23,7 +23,7 @@ from lucode.state import MANAGED_OVERLAY_KEY
 
 WORKSPACE = "https://ws.example.com"
 
-# A normalized managed config, as `managed_config.normalize_managed_config` produces it. Both
+# A normalized managed config, as `managed.config.normalize_managed_config` produces it. Both
 # surviving agents use flat model lists.
 MANAGED = {
     "name": "coding-agent-configs/abc-123",

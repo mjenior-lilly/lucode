@@ -141,7 +141,7 @@ class TestCodingAgentConfigCrudClients:
         # A path lucode omits is a field a re-run silently cannot clear, since the server merges per
         # path. Derive the expectation from the serializer rather than restating it, so adding a
         # manifest field fails here instead of shipping a mask that can't clear it.
-        from lucode.managed_setup import serialize_managed_config
+        from lucode.managed.setup import serialize_managed_config
 
         emitted = set(
             serialize_managed_config(

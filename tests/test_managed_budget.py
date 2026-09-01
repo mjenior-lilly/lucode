@@ -1,10 +1,10 @@
-"""Tests for managed_budget.py — the workspace budget panel shown at launch."""
+"""Tests for lucode.managed.budget — the workspace budget panel shown at launch."""
 
 from __future__ import annotations
 
 import pytest
 
-from lucode.managed_budget import (
+from lucode.managed.budget import (
     BUDGET_WARN_AT,
     budget_state,
     budget_usage_percent,

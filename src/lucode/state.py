@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 
-from lucode.agent_models import pi_default_model
 from lucode.config_io import APP_DIR, is_dry_run
 from lucode.databricks.auth import build_auth_shell_command
 from lucode.databricks.models import build_shared_base_urls
@@ -155,6 +154,9 @@ def build_agent_state(state: dict) -> dict[str, dict]:
     base_urls = base_urls_value if isinstance(base_urls_value, dict) else {}
     use_pat = bool(state.get("use_pat"))
     auth_command = build_auth_shell_command(workspace, profile, use_pat=use_pat)
+    # Import after state initialization because lucode.agents dispatch imports this module.
+    from lucode.agents.models import pi_default_model
+
     pi_model = pi_default_model(state)
     config = {
         "model": pi_model,

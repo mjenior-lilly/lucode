@@ -1,7 +1,7 @@
 """Admin-authored managed coding-agent config: model catalogs, validation, and serialization.
 
 This module owns the admin-write half of the managed config, mirroring the developer-read half in
-:mod:`lucode.managed_config`:
+:mod:`lucode.managed.config`:
 
 - which models an admin may pick for each agent (:func:`model_options_for_agent`),
 - validating a manifest before it is published (:func:`validate_manifest`),
@@ -9,13 +9,14 @@ This module owns the admin-write half of the managed config, mirroring the devel
   (:func:`serialize_managed_config`), and
 - persisting the authored manifest to ``~/.lucode/managed-settings.json``.
 
-The manifest shape here is exactly the one :func:`lucode.managed_config.normalize_managed_config`
+The manifest shape here is exactly the one :func:`lucode.managed.config.normalize_managed_config`
 produces, so ``serialize`` then ``normalize`` round-trips to the input. The enum maps are derived by
 inverting that module's maps rather than restated, so a new agent or MCP type only has to be added
 once.
 
 ``managed-settings.json`` (authored by an admin, published by ``lucode apply``) is distinct from
-``managed-state.json`` (pulled from the workspace by a developer, owned by ``managed_config``).
+``managed-state.json`` (pulled from the workspace by a developer, owned by
+:mod:`lucode.managed.config`).
 
 The interactive wizard that calls these helpers, and the publish step, live in later changes; this
 module deliberately stops at "catalogs + validate + serialize + persist".
@@ -31,7 +32,7 @@ from typing import cast
 
 import lucode.config_io as config_io
 from lucode.databricks.models import ANTHROPIC_FAMILIES
-from lucode.managed_config import (
+from lucode.managed.config import (
     AGENT_ENUM_TO_TOOL,
     MCP_TYPE_ENUM_TO_TAG,
 )
@@ -40,7 +41,7 @@ MANAGED_SETTINGS_PATH = config_io.APP_DIR / "managed-settings.json"
 
 # lucode tool name -> CodingAgent proto enum, and lucode MCP type tag -> McpServerType proto enum.
 # Inverted from the read side's maps so the two directions cannot drift: adding an agent to
-# `managed_config._AGENT_ENUM_TO_TOOL` makes it serializable here automatically.
+# `lucode.managed.config.AGENT_ENUM_TO_TOOL` makes it serializable here automatically.
 AGENT_TOOL_TO_ENUM: dict[str, str] = {tool: enum for enum, tool in AGENT_ENUM_TO_TOOL.items()}
 MCP_TAG_TO_TYPE_ENUM: dict[str, str] = {tag: enum for enum, tag in MCP_TYPE_ENUM_TO_TAG.items()}
 
@@ -172,7 +173,7 @@ def _budget_policy_payload(budget_policy: dict) -> dict:
 def serialize_managed_config(manifest: dict) -> dict:
     """Serialize lucode's internal manifest into a proto-JSON ``CodingAgentConfig``.
 
-    The exact inverse of :func:`lucode.managed_config.normalize_managed_config`: tool names become
+    The exact inverse of :func:`lucode.managed.config.normalize_managed_config`: tool names become
     ``CODING_AGENT_*`` enums, MCP type tags become ``MCP_SERVER_TYPE_*``, and each agent's model
     config is wrapped in its matching ``AgentModelConfig`` oneof variant. Agents and MCP types this
     build doesn't recognize are dropped, mirroring the read side.
@@ -488,7 +489,7 @@ def save_managed_settings(workspace: str, manifest: dict) -> None:
 
 
 def _restrict_permissions(path: Path) -> None:
-    """Best-effort chmod 0600, matching how ``managed_config`` protects ``managed-state.json``.
+    """Best-effort chmod 0600, matching how :mod:`lucode.managed.config` protects its state file.
 
     An unpublished manifest can name internal catalogs, budgets, and MCP servers, so it should not
     be group- or world-readable. No-op where unsupported (e.g. Windows).
@@ -502,7 +503,7 @@ def _restrict_permissions(path: Path) -> None:
 def load_managed_settings(workspace: str | None = None) -> dict | None:
     """Load the authored manifest, or None when absent (or authored for another workspace).
 
-    Passing ``workspace`` scopes the read the way :func:`lucode.managed_config.load_managed_state`
+    Passing ``workspace`` scopes the read the way :func:`lucode.managed.config.load_managed_state`
     does, so a manifest left over from a different workspace is ignored rather than published to the
     wrong place. Omit it to read whatever is on disk.
     """

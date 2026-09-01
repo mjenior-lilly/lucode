@@ -1,7 +1,7 @@
 """Resolve the effective agent settings from the managed config plus local lucode state.
 
 The admin-authored manifest (``~/.lucode/managed-state.json``, written by
-:mod:`lucode.managed_config`) and the developer's own lucode state (``~/.lucode/state.json``) stay
+:mod:`lucode.managed.config`) and the developer's own lucode state (``~/.lucode/state.json``) stay
 separate files — they are never merged on disk. This module resolves them at config-write time:
 manifest values win, while omitted values fall back to the developer's lucode state. The resolved
 view is rendered into Pi or OpenCode configuration without rewriting either state file.
@@ -10,7 +10,7 @@ Only settings recorded through lucode participate in this fallback. Agent config
 outside lucode is owned by the agent and is not read here.
 
 Everything here is pure: no I/O, no mutation of the inputs. Fetching and persisting the manifest,
-and handing the resolved state to the agent config writers, live in :mod:`lucode.managed_config`.
+and handing the resolved state to the agent config writers, live in :mod:`lucode.managed.config`.
 """
 
 from __future__ import annotations
