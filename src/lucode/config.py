@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
-from typing import TypedDict
+from typing import IO, TypedDict
 
 # ---------------------------------------------------------------------------
 # Files and diagnostics
@@ -112,7 +116,18 @@ class ToolSpec(TypedDict):
     backup_path: Path
 
 
-APP_DIR = Path.home() / ".lucode"
+def _resolve_app_dir() -> Path:
+    configured = os.environ.get("LUCODE_HOME")
+    if not configured:
+        return Path.home() / ".lucode"
+    path = Path(configured).expanduser()
+    if not path.is_absolute():
+        raise RuntimeError("LUCODE_HOME must be an absolute path (or start with '~')")
+    return path.resolve(strict=False)
+
+
+APP_DIR = _resolve_app_dir()
+NPM_REGISTRY = "https://elilillyco.jfrog.io/artifactory/api/npm/npm/"
 
 _dry_run = False
 
@@ -133,16 +148,56 @@ def ensure_parent_dir(path: Path) -> None:
         raise RuntimeError(f"Failed to create directory for {path}") from exc
 
 
+def _atomic_write(path: Path, content: str) -> None:
+    ensure_parent_dir(path)
+    existing_mode = path.stat().st_mode & 0o777 if path.exists() else PRIVATE_FILE_MODE
+    target_mode = existing_mode & PRIVATE_FILE_MODE
+    temp_path: Path | None = None
+    try:
+        fd, raw_path = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
+        temp_path = Path(raw_path)
+        os.chmod(fd, target_mode)
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp_path, path)
+        os.chmod(path, target_mode)
+    except OSError as exc:
+        raise RuntimeError(f"Failed to write config file: {path}") from exc
+    finally:
+        if temp_path is not None:
+            temp_path.unlink(missing_ok=True)
+
+
+@contextmanager
+def file_lock(name: str = "state") -> Iterator[None]:
+    """Serialize lucode read-modify-write operations within ``LUCODE_HOME``."""
+    lock_path = APP_DIR / "locks" / f"{name}.lock"
+    ensure_parent_dir(lock_path)
+    stream: IO[str] = lock_path.open("a+", encoding="utf-8")
+    os.chmod(lock_path, PRIVATE_FILE_MODE)
+    try:
+        if os.name == "posix":
+            import fcntl
+
+            fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        if os.name == "posix":
+            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+        stream.close()
+
+
 def backup_existing_file(config_path: Path, backup_path: Path) -> bool:
     if _dry_run:
         return False
     try:
-        APP_DIR.mkdir(parents=True, exist_ok=True)
         if backup_path.exists():
             return True
         if not config_path.exists():
             return False
-        backup_path.write_text(config_path.read_text(encoding="utf-8"), encoding="utf-8")
+        _atomic_write(backup_path, config_path.read_text(encoding="utf-8"))
         return True
     except OSError as exc:
         raise RuntimeError(f"Failed to back up config from {config_path}") from exc
@@ -153,8 +208,7 @@ def restore_file(config_path: Path, backup_path: Path, managed: bool) -> bool:
         return False
     try:
         if backup_path.exists():
-            ensure_parent_dir(config_path)
-            config_path.write_text(backup_path.read_text(encoding="utf-8"), encoding="utf-8")
+            _atomic_write(config_path, backup_path.read_text(encoding="utf-8"))
             backup_path.unlink()
             return True
         if managed and config_path.exists():
@@ -173,11 +227,7 @@ def write_text_file(path: Path, content: str) -> None:
 
         console.print(f"\n[bold]\\[dry run] {path}[/bold]\n{content}")
         return
-    ensure_parent_dir(path)
-    try:
-        path.write_text(content, encoding="utf-8")
-    except OSError as exc:
-        raise RuntimeError(f"Failed to write config file: {path}") from exc
+    _atomic_write(path, content)
 
 
 def write_json_file(path: Path, payload: dict) -> None:
@@ -187,11 +237,7 @@ def write_json_file(path: Path, payload: dict) -> None:
 
         console.print(f"\n[bold]\\[dry run] {path}[/bold]\n{content}")
         return
-    ensure_parent_dir(path)
-    try:
-        path.write_text(content, encoding="utf-8")
-    except OSError as exc:
-        raise RuntimeError(f"Failed to write config file: {path}") from exc
+    _atomic_write(path, content)
 
 
 def deep_merge_dict(base: dict, overlay: dict) -> dict:

@@ -20,9 +20,19 @@ API-specific `compat` flags align Pi's requests with the gateway routes:
   undocumented OpenAI Chat Completions fields.
 
 Additional compat keys may be set manually in models.json; lucode preserves
-them across token refreshes and config rewrites. Provider model lists are also
-preserved as user-defined configuration; workspace discovery never adds model
-entries. OSS and foundation entries require the correct per-model output caps.
+them across token refreshes and config rewrites.
+
+Model membership comes from workspace discovery, or from a workspace-managed
+inventory when one is published. Per-model tuning (``contextWindow``,
+``maxTokens``, ``thinkingLevelMap``, per-model ``compat``) is layered underneath
+from :mod:`lucode.model_tuning`, because discovery returns only bare model ids
+and those caps are gateway-verified findings that cannot be rediscovered. An
+existing entry in models.json always wins over the packaged tuning, so hand
+edits survive every rewrite, including a managed-inventory rewrite.
+
+The user-maintained ``databricks-mlflow`` provider is not rendered here; lucode
+only refreshes its token and fills in a missing route (see
+:func:`_ensure_mlflow_route`).
 
 The bearer token is baked into the file and refreshed by a background thread
 while the session runs (same pattern as OpenCode/Copilot).
@@ -34,12 +44,14 @@ import os
 import signal
 import subprocess
 import threading
+from copy import deepcopy
 
 from lucode.agents.models import pi_default_model
 from lucode.agents.updates import available_npm_package_update
 from lucode.config import (
     APP_DIR,
     BACKGROUND_THREAD_JOIN_TIMEOUT_SECONDS,
+    NPM_REGISTRY,
     TOKEN_REFRESH_INTERVAL_SECONDS,
     ToolSpec,
     backup_existing_file,
@@ -50,9 +62,11 @@ from lucode.config import (
 from lucode.databricks.auth import get_databricks_token
 from lucode.databricks.models import (
     ANTHROPIC_FAMILIES,
+    build_mlflow_base_url,
     build_pi_base_urls,
     classify_model_family,
 )
+from lucode.model_tuning import pi_model_tuning
 from lucode.state import mark_tool_managed, save_state
 from lucode.telemetry import agent_version, lucode_version
 from lucode.ui import print_warning
@@ -91,6 +105,67 @@ LEGACY_PROVIDER_NAMES = ("databricks-anthropic", "databricks-codex", "databricks
 
 def is_update_available() -> tuple[str, str] | None:
     return available_npm_package_update(SPEC["package"])
+
+
+def _tuned_models(
+    provider: str,
+    managed_ids: list[str] | None,
+    discovered_ids: list[str],
+    existing_provider: dict,
+) -> list[dict] | None:
+    """Build ``models`` entries, layering per-model tuning under existing config.
+
+    Membership, in precedence order:
+
+    1. ``managed_ids`` when a workspace policy published an inventory,
+    2. otherwise the user's existing ``models`` array, which stays authoritative
+       exactly as before this tuning layer existed (an explicitly empty array
+       still means "serve nothing"),
+    3. otherwise ``discovered_ids``, bootstrapping a provider the user has never
+       configured.
+
+    Tuning for each id is then resolved most-authoritative-first: the user's own
+    entry, then the packaged tuning in :mod:`lucode.model_tuning`, then nothing
+    (a bare ``{"id": ...}``). Hand edits therefore always win, including over a
+    managed rewrite.
+
+    Returns None only when there is nothing to write, so the caller omits
+    ``models`` rather than pinning an empty array Pi would read as "this
+    provider serves nothing".
+    """
+    existing_models = existing_provider.get("models")
+    existing_by_id: dict[str, dict] = {}
+    if isinstance(existing_models, list):
+        for entry in existing_models:
+            if isinstance(entry, dict) and isinstance(entry.get("id"), str):
+                existing_by_id[entry["id"]] = entry
+
+    if managed_ids is not None:
+        model_ids: list[str] = list(managed_ids)
+    elif isinstance(existing_models, list):
+        # Preserve the pre-tuning contract: a user-maintained array defines
+        # membership, and an empty one is a deliberate "none".
+        model_ids = [e["id"] for e in existing_models if isinstance(e, dict) and e.get("id")]
+        if not model_ids:
+            return []
+    else:
+        model_ids = list(discovered_ids)
+
+    if not model_ids:
+        return None
+
+    models: list[dict] = []
+    for model_id in model_ids:
+        # Tuning goes *underneath* the user's entry: every key they set wins,
+        # and any key they never set is filled from the packaged tuning. So a
+        # hand-added bare id still gets its verified caps.
+        entry: dict = {"id": model_id}
+        entry.update(pi_model_tuning(provider, model_id))
+        existing_entry = existing_by_id.get(model_id)
+        if existing_entry is not None:
+            entry.update(deepcopy(existing_entry))
+        models.append(entry)
+    return models
 
 
 def _resolve_model_selector(
@@ -152,10 +227,11 @@ def render_overlay(
             "compat": compat,
             "headers": ua_headers,
         }
-        models = (
-            [{"id": model_id} for model_id in managed_provider_models["databricks-claude"]]
-            if managed_provider_models is not None
-            else existing_claude.get("models")
+        models = _tuned_models(
+            "databricks-claude",
+            managed_provider_models["databricks-claude"] if managed_provider_models else None,
+            claude_ids,
+            existing_claude,
         )
         if isinstance(models, list):
             providers["databricks-claude"]["models"] = models
@@ -172,10 +248,11 @@ def render_overlay(
             "compat": compat,
             "headers": ua_headers,
         }
-        models = (
-            [{"id": model_id} for model_id in managed_provider_models["databricks-openai"]]
-            if managed_provider_models is not None
-            else existing_openai.get("models")
+        models = _tuned_models(
+            "databricks-openai",
+            managed_provider_models["databricks-openai"] if managed_provider_models else None,
+            codex_models,
+            existing_openai,
         )
         if isinstance(models, list):
             providers["databricks-openai"]["models"] = models
@@ -192,10 +269,11 @@ def render_overlay(
         compat = existing_gemini.get("compat")
         if isinstance(compat, dict):
             providers["databricks-gemini"]["compat"] = dict(compat)
-        models = (
-            [{"id": model_id} for model_id in managed_provider_models["databricks-gemini"]]
-            if managed_provider_models is not None
-            else existing_gemini.get("models")
+        models = _tuned_models(
+            "databricks-gemini",
+            managed_provider_models["databricks-gemini"] if managed_provider_models else None,
+            gemini_models,
+            existing_gemini,
         )
         if isinstance(models, list):
             providers["databricks-gemini"]["models"] = models
@@ -206,6 +284,38 @@ def render_overlay(
     if providers:
         overlay["providers"] = providers
     return overlay, keys
+
+
+def _ensure_mlflow_route(config: dict, workspace: str) -> bool:
+    """Fill in a missing ``databricks-mlflow`` route, without ever overwriting one.
+
+    ``databricks-mlflow`` is user-maintained: it is absent from
+    :data:`PROVIDER_NAMES`, so :func:`render_overlay` never rebuilds it and its
+    entry survives untouched. That leaves seeded tuning unusable, because a
+    provider with models but no ``baseUrl``/``api`` cannot serve them, and the
+    route is workspace-specific so an installer cannot know it.
+
+    Only absent keys are set. A user pointing this provider at their own route
+    keeps it, which is why this is not folded into the rendered providers.
+    """
+    providers = config.get("providers")
+    if not isinstance(providers, dict):
+        return False
+    mlflow = providers.get("databricks-mlflow")
+    if not isinstance(mlflow, dict) or not mlflow.get("models"):
+        return False
+    changed = False
+    if not mlflow.get("baseUrl"):
+        mlflow["baseUrl"] = build_mlflow_base_url(workspace)
+        changed = True
+    if not mlflow.get("api"):
+        # MLflow speaks OpenAI chat-completions, not the Responses dialect.
+        mlflow["api"] = "openai-completions"
+        changed = True
+    if "authHeader" not in mlflow:
+        mlflow["authHeader"] = True
+        changed = True
+    return changed
 
 
 def _update_provider_api_keys(config: dict, token: str) -> bool:
@@ -297,6 +407,7 @@ def write_tool_config(
         for stale in (*LEGACY_PROVIDER_NAMES, *PROVIDER_NAMES):
             providers.pop(stale, None)
     merged = deep_merge_dict(existing, overlay)
+    _ensure_mlflow_route(merged, state["workspace"])
     _update_provider_api_keys(merged, token)
     write_json_file(PI_CONFIG_PATH, merged)
     _write_settings(overlay["model"])
@@ -364,6 +475,7 @@ def build_runtime_env(token: str) -> dict[str, str]:
     # so pin both to prevent an inherited agent directory from bypassing lucode's config.
     env["HOME"] = str(PI_lucode_HOME)
     env["PI_CODING_AGENT_DIR"] = str(PI_CONFIG_DIR)
+    env["NPM_CONFIG_REGISTRY"] = NPM_REGISTRY
     return env
 
 

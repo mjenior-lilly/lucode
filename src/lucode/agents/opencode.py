@@ -3,6 +3,13 @@
 Existing user model maps define unmanaged membership and retain custom metadata.
 Discovery bootstraps a missing map, while a workspace-managed inventory replaces
 membership exactly. Background refreshes update only existing credential fields.
+
+Per-model tuning (``limit``, per-call ``options``, display ``name``) is layered
+underneath from :mod:`lucode.model_tuning` for any model without an existing
+entry, including models a managed inventory introduces. Discovery returns bare
+ids, so without that layer OpenCode runs with no context/output caps. A user's
+existing entry always wins, and a gateway-verified per-model ``limit`` outranks
+the family-substring fallback in :func:`model_token_limits`.
 """
 
 from __future__ import annotations
@@ -30,6 +37,7 @@ from lucode.databricks.models import (
     build_opencode_base_urls,
     model_token_limits,
 )
+from lucode.model_tuning import opencode_model_tuning
 from lucode.state import mark_tool_managed, save_state
 from lucode.telemetry import agent_version, lucode_version
 from lucode.ui import print_warning
@@ -78,14 +86,22 @@ def _resolve_model_selector(model: str, opencode_models: dict[str, list[str]]) -
     return model
 
 
-def _oss_model_overlay(model: str, ua_header: dict[str, str]) -> dict:
+def _oss_model_overlay(model: str, ua_header: dict[str, str], has_limit: bool = False) -> dict:
     """Per-model overlay for an OSS model entry.
 
     All OSS models carry the User-Agent header; models with known token limits
     also pin `limit` (context + output) so OpenCode clamps `max_tokens` to a
     value the gateway accepts. OpenCode's schema requires both fields together,
-    so the limits table always supplies both."""
+    so the limits table always supplies both.
+
+    ``has_limit`` suppresses the table lookup when the entry already carries a
+    limit from packaged tuning or a user edit. :func:`model_token_limits`
+    matches by family substring, so it cannot tell releases apart and would
+    otherwise clamp a gateway-verified per-model cap down to a family default.
+    """
     overlay: dict = {"headers": ua_header}
+    if has_limit:
+        return overlay
     limits = model_token_limits(model)
     if limits is not None:
         overlay["limit"] = limits
@@ -119,19 +135,40 @@ def render_overlay(
         existing_providers = {}
 
     def selected_models(provider_id: str, family: str) -> dict[str, dict]:
+        """Resolve this provider's model map: membership, then layered tuning.
+
+        Membership is whatever the caller was told to serve (a managed
+        inventory, the user's own map, or discovery). Tuning for each id is
+        resolved most-authoritative-first: the user's existing entry, then the
+        packaged tuning, then nothing. A managed inventory therefore replaces
+        *which* models are served without discarding *how* each is tuned.
+        """
         discovered = opencode_models.get(family) or []
+        existing_provider = existing_providers.get(provider_id)
+        has_user_map = isinstance(existing_provider, dict) and isinstance(
+            existing_provider.get("models"), dict
+        )
+        existing_map = existing_provider["models"] if has_user_map else {}
+
+        def tuned(model_id: str) -> dict:
+            # Tuning goes *underneath* the user's entry: keys they set win, keys
+            # they never set are filled from the packaged tuning, so a
+            # hand-added bare id still gets its verified limit.
+            entry = opencode_model_tuning(provider_id, model_id)
+            existing_entry = existing_map.get(model_id)
+            if isinstance(existing_entry, dict):
+                entry.update(deepcopy(existing_entry))
+            return entry
+
         if managed_provider_models is not None:
             selected = managed_provider_models.get(family) or []
-            return {model_id: {} for model_id in selected}
-        existing_provider = existing_providers.get(provider_id)
-        if isinstance(existing_provider, dict) and isinstance(
-            existing_provider.get("models"), dict
-        ):
-            return {
-                model_id: deepcopy(entry) if isinstance(entry, dict) else {}
-                for model_id, entry in existing_provider["models"].items()
-            }
-        return {model_id: {} for model_id in discovered}
+        elif has_user_map:
+            # Preserve the pre-tuning contract: a user map defines membership,
+            # and an empty one is a deliberate "serve nothing".
+            selected = list(existing_map)
+        else:
+            selected = list(discovered)
+        return {model_id: tuned(model_id) for model_id in selected}
 
     anthropic_models = selected_models("databricks-anthropic", "anthropic")
     gemini_models = selected_models("databricks-google", "gemini")
@@ -190,7 +227,12 @@ def render_overlay(
                 "headers": auth_headers,
             },
             "models": {
-                model_id: deep_merge_dict(entry, _oss_model_overlay(model_id, dict(ua_header)))
+                model_id: deep_merge_dict(
+                    entry,
+                    _oss_model_overlay(
+                        model_id, dict(ua_header), has_limit=bool(entry.get("limit"))
+                    ),
+                )
                 for model_id, entry in oss_models.items()
             },
         }

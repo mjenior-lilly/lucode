@@ -18,6 +18,7 @@ from lucode.agents import (
     normalize_tool,
     resolve_launch_model,
 )
+from lucode.config import NPM_REGISTRY
 
 
 class TestToolSpecs:
@@ -259,7 +260,7 @@ class TestInstallToolBinary:
         monkeypatch.setattr("lucode.agents._confirm_update_installed_tool_binary", lambda _: True)
 
         assert install_tool_binary("opencode", strict=False, update_existing=True) is True
-        assert calls == [["npm", "install", "-g", "opencode-ai"]]
+        assert calls == [["npm", "install", "-g", "opencode-ai", f"--registry={NPM_REGISTRY}"]]
         output = capsys.readouterr().out
         assert "Updating OpenCode..." in output
         assert "OpenCode is up to date" in output
@@ -302,14 +303,16 @@ class TestInstallToolBinary:
 
         monkeypatch.setattr("lucode.agents.shutil.which", fake_which)
         monkeypatch.setattr("lucode.agents.subprocess.run", fake_run)
-        monkeypatch.setattr("lucode.agents.opencode.is_update_available", lambda: ("1.2.3", "1.2.4"))
+        monkeypatch.setattr(
+            "lucode.agents.opencode.is_update_available", lambda: ("1.2.3", "1.2.4")
+        )
         monkeypatch.setattr(
             "lucode.agents.prompt_yes_no", lambda prompt: prompt_calls.append(prompt) or True
         )
 
         assert install_tool_binary("opencode", strict=False, update_existing=True) is True
         assert prompt_calls == ["(Optional) Update OpenCode from 1.2.3 to 1.2.4?"]
-        assert calls == [["npm", "install", "-g", "opencode-ai"]]
+        assert calls == [["npm", "install", "-g", "opencode-ai", f"--registry={NPM_REGISTRY}"]]
         assert "Updating OpenCode..." in capsys.readouterr().out
 
     def test_skips_existing_binary_update_when_user_declines(self, monkeypatch, capsys):

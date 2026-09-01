@@ -2,7 +2,7 @@
   "model": "databricks-claude/system.ai.claude-opus-5",
   "providers": {
     "databricks-claude": {
-      "baseUrl": "https://dbc-769ba6b9-6999.cloud.databricks.com/ai-gateway/anthropic",
+      "baseUrl": "<WORKSPACE-URL>/ai-gateway/anthropic",
       "api": "anthropic-messages",
       "apiKey": "<CYCLING-API-KEY>",
       "authHeader": true,
@@ -11,7 +11,7 @@
         "supportsStrictTools": true
       },
       "headers": {
-        "User-Agent": "ucode/0.1.0+31.g4ad17f2 pi/0.84.3"
+        "User-Agent": "<GENERATED-USER-AGENT>"
       },
       "models": [
         {
@@ -108,7 +108,7 @@
       ]
     },
     "databricks-openai": {
-      "baseUrl": "https://dbc-769ba6b9-6999.cloud.databricks.com/ai-gateway/codex/v1",
+      "baseUrl": "<WORKSPACE-URL>/ai-gateway/codex/v1",
       "api": "openai-responses",
       "apiKey": "<CYCLING-API-KEY>",
       "authHeader": true,
@@ -116,7 +116,7 @@
         "supportsStrictMode": true
       },
       "headers": {
-        "User-Agent": "ucode/0.1.0+31.g4ad17f2 pi/0.84.3"
+        "User-Agent": "<GENERATED-USER-AGENT>"
       },
       "models": [
         {
@@ -173,12 +173,12 @@
       ]
     },
     "databricks-mlflow": {
-      "baseUrl": "https://dbc-769ba6b9-6999.cloud.databricks.com/ai-gateway/mlflow/v1",
+      "baseUrl": "<WORKSPACE-URL>/ai-gateway/mlflow/v1",
       "api": "openai-completions",
       "apiKey": "<CYCLING-API-KEY>",
       "authHeader": true,
       "headers": {
-        "User-Agent": "ucode/0.1.0+31.g4ad17f2 pi/0.84.3"
+        "User-Agent": "<GENERATED-USER-AGENT>"
       },
       "models": [
         {

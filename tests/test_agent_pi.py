@@ -176,14 +176,27 @@ class TestRenderOverlayAuthAndModels:
         for name in ("databricks-claude", "databricks-openai", "databricks-gemini"):
             assert overlay["providers"][name]["authHeader"] is True
 
-    def test_discovery_does_not_inject_model_inventories(self):
+    def test_discovery_bootstraps_inventories_without_inventing_tuning(self):
+        # Discovery now bootstraps an inventory, because a provider with no
+        # `models` key leaves Pi with no context window or output cap at all.
+        # Membership still comes only from discovery, and a model with no
+        # packaged tuning stays a bare id rather than getting invented caps.
         overlay, _ = _overlay(
             "claude-sonnet",
             claude_models={"sonnet": "claude-sonnet"},
             codex_models=["gpt-5"],
             gemini_models=["gemini-2"],
         )
-        assert all("models" not in provider for provider in overlay["providers"].values())
+        for provider in overlay["providers"].values():
+            assert [set(m) for m in provider["models"]] == [{"id"}]
+
+    def test_discovery_applies_packaged_tuning_when_available(self):
+        overlay, _ = _overlay(
+            "system.ai.claude-opus-5",
+            claude_models={"opus": "system.ai.claude-opus-5"},
+        )
+        entry = overlay["providers"]["databricks-claude"]["models"][0]
+        assert entry["maxTokens"] == 128_000
 
     def test_discovery_preserves_user_models_and_custom_compat(self):
         existing = {
@@ -578,3 +591,158 @@ class TestManagedDefaultModel:
             "claude_models": {"opus": "discovered-opus"},
         }
         assert pi.default_model(state) == "discovered-opus"
+
+
+class TestPerModelTuningPreserved:
+    """Gateway-verified per-model tuning must survive every write path.
+
+    These values (contextWindow, maxTokens, thinkingLevelMap, per-model compat)
+    were established by testing each model against the AI Gateway. Discovery
+    returns bare model ids, so nothing can rediscover them: if a code path drops
+    them, an agent silently runs with no caps and no thinking-level mapping.
+    """
+
+    TUNED = "system.ai.claude-opus-5"
+
+    def _urls(self) -> dict[str, str]:
+        return _base_urls()
+
+    def _render(self, existing=None, managed=None, claude=None):
+        overlay, _ = pi.render_overlay(
+            self.TUNED,
+            "tok",
+            self._urls(),
+            claude if claude is not None else {"opus": self.TUNED},
+            [],
+            [],
+            existing_config=existing,
+            managed_provider_models=managed,
+        )
+        return overlay["providers"]["databricks-claude"]["models"]
+
+    def _entry(self, models, model_id=None):
+        return next(m for m in models if m["id"] == (model_id or self.TUNED))
+
+    def test_fresh_install_gets_packaged_tuning(self):
+        # Regression: previously a fresh config had no `models` key at all, so
+        # Pi ran with no context window or output cap.
+        entry = self._entry(self._render())
+        assert entry["contextWindow"] == 1_000_000
+        assert entry["maxTokens"] == 128_000
+        assert entry["thinkingLevelMap"]
+
+    def test_managed_inventory_keeps_tuning(self):
+        # Regression: a managed policy rebuilt inventories as bare {"id": ...},
+        # erasing every tuned field after an otherwise-correct install.
+        models = self._render(
+            managed={
+                "databricks-claude": [self.TUNED],
+                "databricks-openai": [],
+                "databricks-gemini": [],
+            }
+        )
+        entry = self._entry(models)
+        assert [m["id"] for m in models] == [self.TUNED], "managed policy sets membership"
+        assert entry["maxTokens"] == 128_000, "managed policy must not set tuning"
+        assert entry["thinkingLevelMap"]
+
+    def test_user_edit_outranks_packaged_tuning(self):
+        existing = {
+            "providers": {"databricks-claude": {"models": [{"id": self.TUNED, "maxTokens": 999}]}}
+        }
+        assert self._entry(self._render(existing=existing))["maxTokens"] == 999
+
+    def test_packaged_tuning_fills_gaps_in_a_user_entry(self):
+        # A hand-added bare id still earns its verified caps; tuning layers
+        # underneath rather than replacing the user's entry.
+        existing = {
+            "providers": {"databricks-claude": {"models": [{"id": self.TUNED, "name": "Mine"}]}}
+        }
+        entry = self._entry(self._render(existing=existing))
+        assert entry["name"] == "Mine"
+        assert entry["contextWindow"] == 1_000_000
+
+    def test_empty_user_array_still_means_serve_nothing(self):
+        existing = {"providers": {"databricks-claude": {"models": []}}}
+        assert self._render(existing=existing) == []
+
+    def test_user_array_still_defines_membership(self):
+        existing = {
+            "providers": {"databricks-claude": {"models": [{"id": "system.ai.claude-sonnet-5"}]}}
+        }
+        models = self._render(
+            existing=existing, claude={"opus": self.TUNED, "sonnet": "system.ai.claude-sonnet-5"}
+        )
+        assert [m["id"] for m in models] == ["system.ai.claude-sonnet-5"]
+
+    def test_tuning_survives_a_full_write_and_reread(self, tmp_path, monkeypatch):
+        import lucode.agents.pi as pi_mod
+        import lucode.config as config_mod
+
+        monkeypatch.setattr(config_mod, "APP_DIR", tmp_path)
+        config_file = tmp_path / "models.json"
+        monkeypatch.setattr(pi_mod, "PI_CONFIG_PATH", config_file)
+        monkeypatch.setattr(pi_mod, "PI_SETTINGS_PATH", tmp_path / "settings.json")
+        monkeypatch.setattr(pi_mod, "PI_BACKUP_PATH", tmp_path / "b.json")
+        monkeypatch.setattr(pi_mod, "PI_SETTINGS_BACKUP_PATH", tmp_path / "sb.json")
+        state = {
+            "workspace": WS,
+            "base_urls": {"pi": _base_urls()},
+            "claude_models": {"opus": self.TUNED},
+            "codex_models": [],
+            "gemini_models": [],
+            "managed_configs": {},
+        }
+        with (
+            patch("lucode.agents.pi.get_databricks_token", return_value="tok"),
+            patch("lucode.agents.pi.save_state"),
+        ):
+            pi_mod.write_tool_config(state, self.TUNED, token="tok")
+            # A second configure must not degrade what the first wrote.
+            pi_mod.write_tool_config(state, self.TUNED, token="tok")
+
+        written = json.loads(config_file.read_text())
+        entry = self._entry(written["providers"]["databricks-claude"]["models"])
+        assert entry["maxTokens"] == 128_000
+        assert entry["contextWindow"] == 1_000_000
+        assert entry["thinkingLevelMap"]
+
+
+class TestMlflowRouteFill:
+    """`databricks-mlflow` is user-maintained, so seeded tuning needs a route.
+
+    lucode never rebuilds this provider, so a seeded inventory would otherwise
+    be unusable: models but no baseUrl/api cannot serve. Only absent keys are
+    filled, so a user's own route is never overwritten.
+    """
+
+    def test_fills_missing_route_and_keeps_tuning(self):
+        config = {
+            "providers": {
+                "databricks-mlflow": {"models": [{"id": "system.ai.kimi-k3", "maxTokens": 128_000}]}
+            }
+        }
+        assert pi._ensure_mlflow_route(config, WS) is True
+        mlflow = config["providers"]["databricks-mlflow"]
+        assert mlflow["baseUrl"] == f"{WS}/ai-gateway/mlflow/v1"
+        assert mlflow["api"] == "openai-completions"
+        assert mlflow["models"][0]["maxTokens"] == 128_000
+
+    def test_never_overwrites_a_user_route(self):
+        config = {
+            "providers": {
+                "databricks-mlflow": {
+                    "baseUrl": "https://mine/v1",
+                    "api": "openai-completions",
+                    "authHeader": True,
+                    "models": [{"id": "m"}],
+                }
+            }
+        }
+        assert pi._ensure_mlflow_route(config, WS) is False
+        assert config["providers"]["databricks-mlflow"]["baseUrl"] == "https://mine/v1"
+
+    def test_ignores_provider_without_models(self):
+        config = {"providers": {"databricks-mlflow": {}}}
+        assert pi._ensure_mlflow_route(config, WS) is False
+        assert "baseUrl" not in config["providers"]["databricks-mlflow"]

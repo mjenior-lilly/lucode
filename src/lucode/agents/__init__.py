@@ -11,6 +11,7 @@ from rich.panel import Panel
 from lucode.config import (
     AGENT_PACKAGE_INSTALL_TIMEOUT_SECONDS,
     AGENT_VALIDATION_TIMEOUT_SECONDS,
+    NPM_REGISTRY,
     ToolSpec,
     restore_file,
 )
@@ -61,7 +62,7 @@ def _update_installed_tool_binary(tool: str, version: str | None = None) -> bool
     print_note(f"Updating {spec['display']}...")
     try:
         subprocess.run(
-            ["npm", "install", "-g", target],
+            ["npm", "install", "-g", target, f"--registry={NPM_REGISTRY}"],
             check=True,
             timeout=AGENT_PACKAGE_INSTALL_TIMEOUT_SECONDS,
         )
@@ -124,7 +125,7 @@ def install_tool_binary(
     print_warning(f"`{binary}` was not found. Installing {spec['display']}...")
     try:
         subprocess.run(
-            ["npm", "install", "-g", spec["package"]],
+            ["npm", "install", "-g", spec["package"], f"--registry={NPM_REGISTRY}"],
             check=True,
             timeout=AGENT_PACKAGE_INSTALL_TIMEOUT_SECONDS,
         )

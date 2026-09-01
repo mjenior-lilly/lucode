@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from lucode.config import APP_DIR, AUTH_REFRESH_INTERVAL_MS, JSON_INDENT, is_dry_run
+from lucode.config import APP_DIR, AUTH_REFRESH_INTERVAL_MS, file_lock, is_dry_run, write_json_file
 from lucode.databricks.auth import build_auth_shell_command
 from lucode.databricks.models import build_shared_base_urls
 
@@ -53,16 +53,13 @@ def save_state(state: dict) -> None:
     """
     if is_dry_run():
         return
-    full = load_full_state()
-    workspace = state.get("workspace") or full.get("current_workspace")
-    if workspace:
-        full["current_workspace"] = workspace
-        full["workspaces"][workspace] = hydrate_state(_without_managed_overlay(state))
-    try:
-        APP_DIR.mkdir(parents=True, exist_ok=True)
-        STATE_PATH.write_text(json.dumps(full, indent=JSON_INDENT), encoding="utf-8")
-    except OSError as exc:
-        raise RuntimeError(f"Failed to write state file: {STATE_PATH}") from exc
+    with file_lock("state"):
+        full = load_full_state()
+        workspace = state.get("workspace") or full.get("current_workspace")
+        if workspace:
+            full["current_workspace"] = workspace
+            full["workspaces"][workspace] = hydrate_state(_without_managed_overlay(state))
+        write_json_file(STATE_PATH, full)
 
 
 def _without_managed_overlay(state: dict) -> dict:
@@ -88,15 +85,12 @@ def set_current_workspace(workspace: str | None) -> None:
     """Set ``current_workspace`` without touching the per-workspace blocks."""
     if is_dry_run():
         return
-    full = load_full_state()
-    if full.get("current_workspace") == workspace:
-        return
-    full["current_workspace"] = workspace
-    try:
-        APP_DIR.mkdir(parents=True, exist_ok=True)
-        STATE_PATH.write_text(json.dumps(full, indent=JSON_INDENT), encoding="utf-8")
-    except OSError as exc:
-        raise RuntimeError(f"Failed to write state file: {STATE_PATH}") from exc
+    with file_lock("state"):
+        full = load_full_state()
+        if full.get("current_workspace") == workspace:
+            return
+        full["current_workspace"] = workspace
+        write_json_file(STATE_PATH, full)
 
 
 def hydrate_state(state: dict) -> dict:
@@ -168,16 +162,13 @@ def build_agent_state(state: dict) -> dict[str, dict]:
 
 def clear_state() -> None:
     """Remove the current workspace entry from state."""
-    full = load_full_state()
-    workspace = full.get("current_workspace")
-    if workspace:
-        full.get("workspaces", {}).pop(workspace, None)
-        full["current_workspace"] = None
-    try:
-        APP_DIR.mkdir(parents=True, exist_ok=True)
-        STATE_PATH.write_text(json.dumps(full, indent=JSON_INDENT), encoding="utf-8")
-    except OSError as exc:
-        raise RuntimeError(f"Failed to clear state file: {STATE_PATH}") from exc
+    with file_lock("state"):
+        full = load_full_state()
+        workspace = full.get("current_workspace")
+        if workspace:
+            full.get("workspaces", {}).pop(workspace, None)
+            full["current_workspace"] = None
+        write_json_file(STATE_PATH, full)
 
 
 def mark_tool_managed(state: dict, tool: str, managed_keys: list) -> dict:

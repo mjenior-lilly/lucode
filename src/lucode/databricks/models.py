@@ -72,6 +72,12 @@ _MODEL_TOKEN_LIMITS: dict[str, dict[str, int]] = {
 def model_token_limits(model_id: str) -> dict[str, int] | None:
     """Return ``{"context": ..., "output": ...}`` limits for ``model_id``, or None.
 
+    This is the *fallback* for a model with no packaged per-model tuning. An
+    exact-id ``limit`` in ``lucode.model_tuning`` is gateway-verified for that
+    specific model and outranks this table, which matches by family substring
+    and so cannot distinguish releases within a family. Callers must not let
+    this value overwrite a tuned or user-set ``limit``.
+
     Matches by family substring (e.g. any ``*glm*`` id). None means the model
     has no known limits and the agent should not pin any."""
     for family, limits in _MODEL_TOKEN_LIMITS.items():
@@ -447,6 +453,17 @@ def build_opencode_base_urls(workspace: str) -> dict[str, str]:
         "gemini": build_tool_base_url("gemini", workspace) + "/v1beta",
         "oss": f"{workspace}/ai-gateway/mlflow/v1",
     }
+
+
+def build_mlflow_base_url(workspace: str) -> str:
+    """Return the OpenAI-completions MLflow route for ``workspace``.
+
+    Kept separate from :func:`build_pi_base_urls` because ``databricks-mlflow``
+    is user-maintained rather than rendered from discovery: lucode only fills
+    this route in when the provider exists without one, so the key must not
+    appear in the rendered per-provider base-URL map.
+    """
+    return f"{workspace}/ai-gateway/mlflow/v1"
 
 
 def build_pi_base_urls(workspace: str) -> dict[str, str]:

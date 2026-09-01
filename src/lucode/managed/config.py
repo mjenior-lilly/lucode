@@ -313,13 +313,7 @@ def save_managed_state(workspace: str, config: dict) -> None:
             f"{json.dumps(payload, indent=app_config.JSON_INDENT)}\n"
         )
         return
-    app_config.ensure_parent_dir(MANAGED_STATE_PATH)
-    try:
-        MANAGED_STATE_PATH.write_text(
-            json.dumps(payload, indent=app_config.JSON_INDENT) + "\n", encoding="utf-8"
-        )
-    except OSError as exc:
-        raise RuntimeError(f"Failed to write managed state file: {MANAGED_STATE_PATH}") from exc
+    app_config.write_json_file(MANAGED_STATE_PATH, payload)
     _restrict_permissions(MANAGED_STATE_PATH)
 
 

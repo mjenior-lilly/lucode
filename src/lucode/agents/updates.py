@@ -6,7 +6,7 @@ import json
 import shutil
 import subprocess
 
-from lucode.config import AGENT_UPDATE_CHECK_TIMEOUT_SECONDS
+from lucode.config import AGENT_UPDATE_CHECK_TIMEOUT_SECONDS, NPM_REGISTRY
 
 
 def available_npm_package_update(package: str) -> tuple[str, str] | None:
@@ -14,7 +14,7 @@ def available_npm_package_update(package: str) -> tuple[str, str] | None:
         return None
     try:
         result = subprocess.run(
-            ["npm", "outdated", "-g", "--json", package],
+            ["npm", "outdated", "-g", "--json", package, f"--registry={NPM_REGISTRY}"],
             capture_output=True,
             text=True,
             timeout=AGENT_UPDATE_CHECK_TIMEOUT_SECONDS,

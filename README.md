@@ -6,24 +6,51 @@ configuration.
 
 ## Requirements
 
-- Python 3.12+
-- `uv`
-- `npm` if Pi or OpenCode must be installed automatically
+- Python 3.12+ and `uv` for installation
+- `npm` and access to Lilly npm Artifactory if Pi or OpenCode must be installed
+- `git` for shared prompt updates
 - Databricks CLI authentication for the target workspace
 
-## Install
+## Install and initialize
+
+Install the package, then run initialization:
 
 ```bash
 uv tool install git+https://github.com/mjenior-lilly/lucode
+lucode init
 ```
+
+From a cloned checkout, install the current directory and initialize it:
+
+```bash
+uv tool install .
+lucode init
+```
+
+Installation does not edit shell startup files or create model inventories.
+Initialization adds only absent, non-security Pi preferences and asks separately before adding the
+displayed extension list or setting global project trust. Use explicit
+`--extensions/--no-extensions` and `--project-trust/--no-project-trust` flags in
+non-interactive runs. `lucode init --revert` removes unchanged values owned by
+initialization while preserving later user edits.
+
+`LUCODE_HOME` selects the complete lucode state tree and defaults to
+`~/.lucode`; it must be absolute or start with `~`. `PROMPTS_REPO` and
+`PROMPTS_REPO_DIR` select the validated prompt source and checkout.
 
 ## Launch an agent
 
 ```bash
-lucode pi
+lpi
 ```
 
-For OpenCode, replace `pi` with `opencode`. On first launch, `lucode` prompts
+`lpi` safely updates and activates a complete prompt revision before launching
+Pi. `lucode prompts status`, `update`, `rollback`, and `update --resume` expose
+recovery; rollback holds its selected revision until explicitly resumed. An
+update failure retains the active revision and warns before launch. Use
+`lucode pi` when no automatic prompt update is wanted.
+
+For OpenCode, run `lucode opencode`. On first launch, `lucode` prompts
 for a workspace, authenticates, discovers models, and writes the agent
 configuration. Later launches reuse the workspace and refresh the token while
 the session runs.
@@ -87,13 +114,43 @@ by this client and does not clear unrelated remote tracing configuration.
 
 | File | Owner |
 |---|---|
-| `~/.config/opencode/opencode.json` | OpenCode |
-| `~/.lucode/pi-home/.pi/agent/models.json` | Pi |
-| `~/.lucode/managed-settings.json` | Workspace policy authored by `lucode setup` |
+| `$LUCODE_HOME/opencode-xdg/opencode/opencode.json` | OpenCode |
+| `$LUCODE_HOME/pi-home/.pi/agent/models.json` | Pi |
+| `$LUCODE_HOME/managed-settings.json` | Workspace policy authored by `lucode setup` |
+| `$LUCODE_HOME/prompts/` | Validated prompt revisions and lifecycle state |
 
 `lucode` preserves user model inventories unless workspace policy supplies an
-exact managed inventory. It backs up existing agent files before overwriting
-them, and `lucode revert` restores those backups.
+exact managed inventory. Installation never seeds inventories. Pi
+`databricks-mlflow` membership remains user-maintained. Lucode writes private
+state and backups atomically with user-only permissions on POSIX.
+
+### Per-model tuning
+
+Workspace discovery returns bare model ids. The settings that make each model
+usable are shipped as package data in `lucode/defaults/` and applied when an
+agent config is written:
+
+| Agent | Tuned fields |
+|---|---|
+| Pi | `contextWindow`, `maxTokens`, `thinkingLevelMap`, per-model `compat`, `input`, `reasoning`, `name` |
+| OpenCode | `limit` (context + output), per-call `options`, `name` |
+
+These values are verified against the AI Gateway per model, not derived, so they
+cannot be rediscovered if lost. Two rules apply on every write, including a
+re-configure and a managed-policy rewrite:
+
+- **Membership** comes from discovery, or from a workspace-managed inventory when
+  one is published. Tuning never adds a model the agent was not told to serve.
+- **Tuning is layered underneath your own config.** Any field set in your
+  `models.json` or `opencode.json` wins; only fields you have not set are filled
+  in. An explicitly empty model list still means "serve nothing".
+
+A gateway-verified per-model `limit` also outranks the family-substring fallback
+in `model_token_limits()`, which cannot tell releases within a family apart.
+
+The user-maintained `databricks-mlflow` provider (Pi, OSS/foundation models) is
+not rendered from discovery. `lucode` fills in its route only when absent and
+refreshes its token, so a route you set yourself is never overwritten.
 
 ## Develop
 

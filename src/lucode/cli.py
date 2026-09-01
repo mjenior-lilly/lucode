@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import sys
 from typing import Annotated
 
 import typer
@@ -829,6 +830,58 @@ setup_app = typer.Typer(add_completion=False, no_args_is_help=False)
 app.add_typer(
     setup_app, name="setup", help="Author the workspace's managed coding config (admins only)."
 )
+prompts_app = typer.Typer(add_completion=False, no_args_is_help=True)
+app.add_typer(prompts_app, name="prompts", help="Manage revisioned shared prompts.")
+
+
+@app.command("init")
+def init_cmd(
+    extensions: Annotated[bool | None, typer.Option("--extensions/--no-extensions")] = None,
+    project_trust: Annotated[
+        bool | None, typer.Option("--project-trust/--no-project-trust")
+    ] = None,
+    revert: Annotated[bool, typer.Option("--revert")] = False,
+) -> None:
+    """Initialize append-only Pi preferences with explicit security consent."""
+    from lucode.bootstrap import initialize
+    from lucode.bootstrap import revert as revert_init
+    from lucode.model_tuning import pi_settings_packages
+
+    if revert:
+        revert_init()
+        print_success("Initialization-owned settings reverted")
+        return
+    packages = pi_settings_packages()
+    if extensions is None:
+        console.print("Pi extensions:\n" + "\n".join(f"  {package}" for package in packages))
+        extensions = prompt_yes_no_default("Add these Pi extensions?", default=False)
+    if project_trust is None:
+        project_trust = prompt_yes_no_default(
+            "Set Pi defaultProjectTrust to always for all projects?", default=False
+        )
+    owned = initialize(extensions=extensions, project_trust=project_trust)
+    print_success(f"Initialization complete ({len(owned)} settings added)")
+
+
+@prompts_app.command("status")
+def prompts_status_cmd() -> None:
+    from lucode.prompts import status
+
+    console.print_json(data=status())
+
+
+@prompts_app.command("update")
+def prompts_update_cmd(resume: Annotated[bool, typer.Option("--resume")] = False) -> None:
+    from lucode.prompts import update
+
+    console.print_json(data=update(resume=resume))
+
+
+@prompts_app.command("rollback")
+def prompts_rollback_cmd() -> None:
+    from lucode.prompts import rollback
+
+    console.print_json(data=rollback())
 
 
 def _version_callback(value: bool) -> None:
@@ -1778,6 +1831,23 @@ def upgrade_cmd() -> None:
 
 def main() -> None:
     app()
+
+
+def lpi_main() -> None:
+    """Update the shared prompt revision, then launch Pi with unchanged arguments."""
+    args = sys.argv[1:]
+    if not any(arg in {"--help", "-h", "--version"} for arg in args):
+        from lucode.prompts import update
+
+        try:
+            result = update()
+        except RuntimeError as exc:
+            print_err(str(exc))
+            raise SystemExit(1) from None
+        if str(result.get("last_result", "")).startswith("failed:"):
+            print_warning(result["last_result"])
+    sys.argv[1:] = ["pi", *args]
+    app(prog_name="lpi")
 
 
 if __name__ == "__main__":

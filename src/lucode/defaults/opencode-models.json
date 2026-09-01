@@ -4,7 +4,7 @@
     "databricks-anthropic": {
       "npm": "@ai-sdk/anthropic",
       "options": {
-        "baseURL": "https://dbc-769ba6b9-6999.cloud.databricks.com/ai-gateway/anthropic/v1",
+        "baseURL": "<WORKSPACE-URL>/ai-gateway/anthropic/v1",
         "apiKey": "<CYCLING-API-KEY>",
         "headers": {
           "Authorization": "Bearer <CYCLING-API-KEY>"
@@ -66,7 +66,7 @@
     "databricks-oss": {
       "npm": "@ai-sdk/openai",
       "options": {
-        "baseURL": "https://dbc-769ba6b9-6999.cloud.databricks.com/ai-gateway/mlflow/v1",
+        "baseURL": "<WORKSPACE-URL>/ai-gateway/mlflow/v1",
         "apiKey": "<CYCLING-API-KEY>",
         "headers": {
           "Authorization": "Bearer <CYCLING-API-KEY>"

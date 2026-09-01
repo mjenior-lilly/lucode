@@ -24,7 +24,6 @@ module deliberately stops at "catalogs + validate + serialize + persist".
 
 from __future__ import annotations
 
-import json
 import os
 import uuid
 from pathlib import Path
@@ -478,15 +477,7 @@ def save_managed_settings(workspace: str, manifest: dict) -> None:
     if app_config.is_dry_run():
         return
     payload = {"workspace": workspace, "config": manifest}
-    app_config.ensure_parent_dir(MANAGED_SETTINGS_PATH)
-    try:
-        MANAGED_SETTINGS_PATH.write_text(
-            json.dumps(payload, indent=app_config.JSON_INDENT) + "\n", encoding="utf-8"
-        )
-    except OSError as exc:
-        raise RuntimeError(
-            f"Failed to write managed settings file: {MANAGED_SETTINGS_PATH}"
-        ) from exc
+    app_config.write_json_file(MANAGED_SETTINGS_PATH, payload)
     _restrict_permissions(MANAGED_SETTINGS_PATH)
 
 

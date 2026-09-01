@@ -265,8 +265,11 @@ class TestRenderOverlay:
         assert existing == original
         assert set(providers["databricks-google"]["models"]) == {"user-gemini"}
         assert providers["databricks-google"]["models"]["user-gemini"]["custom"] == "keep"
+        # A user-set limit is custom metadata and wins. model_token_limits
+        # matches by family substring (any *glm*), so letting it overwrite this
+        # would silently discard a deliberate per-model cap.
         glm = providers["databricks-oss"]["models"]["system.ai.glm-5-2"]
-        assert glm["limit"] == {"context": 200000, "output": 25000}
+        assert glm["limit"] == {"context": 1, "output": 1}
 
     def test_existing_empty_model_map_is_authoritative(self):
         existing = {"provider": {"databricks-anthropic": {"models": {}}}}
@@ -575,3 +578,72 @@ class TestWriteToolConfigStaleProviderCleanup:
 
         written = json.loads(config_file.read_text())
         assert written["model"] == "databricks-anthropic/claude-sonnet"
+
+
+class TestPerModelTuningPreserved:
+    """Gateway-verified per-model tuning must survive every write path.
+
+    `limit` (context + output) and per-call `options` were established by
+    testing each model against the AI Gateway. Discovery returns bare ids, so a
+    dropped limit means OpenCode stops clamping `max_tokens` and the gateway
+    rejects requests.
+    """
+
+    TUNED = "system.ai.glm-5-3-flash"
+    TUNED_LIMIT = {"context": 1_000_000, "output": 128_000}
+
+    def _render(self, existing=None, managed=None, oss=None):
+        overlay, _ = opencode.render_overlay(
+            self.TUNED,
+            "tok",
+            _base_urls(),
+            {"oss": oss if oss is not None else [self.TUNED]},
+            existing_config=existing,
+            managed_provider_models=managed,
+        )
+        return overlay["provider"]["databricks-oss"]["models"]
+
+    def test_fresh_install_gets_packaged_limit(self):
+        assert self._render()[self.TUNED]["limit"] == self.TUNED_LIMIT
+
+    def test_managed_inventory_keeps_tuning(self):
+        # Regression: a managed inventory rebuilt entries as {} , losing the
+        # tuned limit and display name.
+        models = self._render(managed={"oss": [self.TUNED]})
+        assert list(models) == [self.TUNED]
+        assert models[self.TUNED]["limit"] == self.TUNED_LIMIT
+        assert models[self.TUNED]["name"]
+
+    def test_tuned_limit_outranks_family_substring_table(self):
+        # model_token_limits matches any *glm* id and would clamp this verified
+        # 1M/128k cap down to the family default 200k/25k.
+        from lucode.databricks.models import model_token_limits
+
+        assert model_token_limits(self.TUNED) == {"context": 200_000, "output": 25_000}
+        assert self._render()[self.TUNED]["limit"] == self.TUNED_LIMIT
+
+    def test_user_limit_outranks_packaged_tuning(self):
+        existing = {
+            "provider": {
+                "databricks-oss": {"models": {self.TUNED: {"limit": {"context": 1, "output": 2}}}}
+            }
+        }
+        assert self._render(existing=existing)[self.TUNED]["limit"] == {"context": 1, "output": 2}
+
+    def test_packaged_tuning_fills_gaps_in_a_user_entry(self):
+        existing = {"provider": {"databricks-oss": {"models": {self.TUNED: {"name": "Mine"}}}}}
+        entry = self._render(existing=existing)[self.TUNED]
+        assert entry["name"] == "Mine"
+        assert entry["limit"] == self.TUNED_LIMIT
+
+    def test_untuned_model_still_falls_back_to_the_table(self):
+        # A model with no packaged tuning must still get the family fallback.
+        models = self._render(oss=["system.ai.glm-4-6-flash"])
+        assert models["system.ai.glm-4-6-flash"]["limit"] == {
+            "context": 200_000,
+            "output": 25_000,
+        }
+
+    def test_empty_user_map_still_means_serve_nothing(self):
+        existing = {"provider": {"databricks-oss": {"models": {}}}}
+        assert self._render(existing=existing) == {}
