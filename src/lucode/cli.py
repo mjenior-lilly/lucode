@@ -69,14 +69,9 @@ from lucode.managed.resolve import (
     resolve_state,
 )
 from lucode.managed.wizard import apply_command, setup_command, show_command
-from lucode.mcp import (
-    MCP_CLIENTS,
-    SKILLS_MCP_KIND,
-    configure_mcp_command,
-    configure_skills_mcp_command,
-    purge_cross_workspace_mcp_residue,
-    revert_mcp_configs,
-)
+from lucode.mcp.commands import configure_mcp_command
+from lucode.mcp.config import MCP_CLIENTS, purge_cross_workspace_mcp_residue, revert_mcp_configs
+from lucode.mcp.skills import SKILLS_MCP_KIND, configure_skills_mcp_command
 from lucode.skills_download import configure_skills_download_command
 from lucode.state import (
     STATE_PATH,
@@ -873,7 +868,7 @@ def mcp_proxy_cmd(
     tokens are refreshed through the normal token path per request. Not meant
     for interactive use — the agent manages this process's lifecycle."""
     # The proxy server stack is needed only for this hidden subprocess command.
-    from lucode.mcp_proxy import serve
+    from lucode.mcp.proxy import serve
 
     state = load_state()
     workspace = host or state.get("workspace")

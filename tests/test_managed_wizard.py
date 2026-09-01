@@ -91,7 +91,7 @@ class TestMcpServersFromState:
         ]
 
     def test_skips_the_skills_registry_entry(self):
-        from lucode.mcp import SKILLS_MCP_KIND
+        from lucode.mcp.skills import SKILLS_MCP_KIND
 
         state = {
             "mcp_servers": [

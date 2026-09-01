@@ -1,7 +1,5 @@
 """Tests for the `lucode mcp-proxy` stdio<->streamable-HTTP bridge."""
 
-from __future__ import annotations
-
 import tomllib
 from pathlib import Path
 
@@ -9,7 +7,7 @@ import anyio
 import httpx
 import pytest
 
-from lucode import mcp_proxy
+import lucode.mcp.proxy as proxy
 
 WS = "https://example.databricks.com"
 URL = f"{WS}/api/2.0/mcp/functions/system/ai"
@@ -24,8 +22,8 @@ def test_httpx_is_a_direct_runtime_dependency():
 
 class TestDatabricksTokenAuth:
     def test_injects_bearer_from_minted_token(self, monkeypatch):
-        monkeypatch.setattr(mcp_proxy, "get_databricks_token", lambda ws, profile: "tok-123")
-        auth = mcp_proxy._DatabricksTokenAuth(WS, "uc-dogfood")
+        monkeypatch.setattr(proxy, "get_databricks_token", lambda ws, profile: "tok-123")
+        auth = proxy._DatabricksTokenAuth(WS, "uc-dogfood")
 
         request = httpx.Request("POST", URL)
         # auth_flow is a generator that yields the (mutated) request.
@@ -36,11 +34,11 @@ class TestDatabricksTokenAuth:
     def test_calls_get_token_with_workspace_and_profile(self, monkeypatch):
         calls: list[tuple[str, str | None]] = []
         monkeypatch.setattr(
-            mcp_proxy,
+            proxy,
             "get_databricks_token",
             lambda ws, profile: calls.append((ws, profile)) or "t",
         )
-        auth = mcp_proxy._DatabricksTokenAuth(WS, "myprofile")
+        auth = proxy._DatabricksTokenAuth(WS, "myprofile")
 
         list(auth.auth_flow(httpx.Request("POST", URL)))
 
@@ -50,8 +48,8 @@ class TestDatabricksTokenAuth:
         # Each request re-invokes get_databricks_token, so a rotated token is
         # picked up mid-session without the proxy tracking expiry itself.
         tokens = iter(["first", "second"])
-        monkeypatch.setattr(mcp_proxy, "get_databricks_token", lambda ws, profile: next(tokens))
-        auth = mcp_proxy._DatabricksTokenAuth(WS, None)
+        monkeypatch.setattr(proxy, "get_databricks_token", lambda ws, profile: next(tokens))
+        auth = proxy._DatabricksTokenAuth(WS, None)
 
         r1 = httpx.Request("POST", URL)
         r2 = httpx.Request("POST", URL)
@@ -62,8 +60,8 @@ class TestDatabricksTokenAuth:
         assert r2.headers["Authorization"] == "Bearer second"
 
     def test_auth_flow_yields_the_same_request(self, monkeypatch):
-        monkeypatch.setattr(mcp_proxy, "get_databricks_token", lambda ws, profile: "t")
-        auth = mcp_proxy._DatabricksTokenAuth(WS, None)
+        monkeypatch.setattr(proxy, "get_databricks_token", lambda ws, profile: "t")
+        auth = proxy._DatabricksTokenAuth(WS, None)
 
         request = httpx.Request("POST", URL)
         yielded = list(auth.auth_flow(request))
@@ -77,10 +75,10 @@ class TestDatabricksTokenAuth:
         def boom(ws, profile):
             raise RuntimeError("no access token; run `databricks auth login`")
 
-        monkeypatch.setattr(mcp_proxy, "get_databricks_token", boom)
-        auth = mcp_proxy._DatabricksTokenAuth(WS, "p")
+        monkeypatch.setattr(proxy, "get_databricks_token", boom)
+        auth = proxy._DatabricksTokenAuth(WS, "p")
 
-        with pytest.raises(mcp_proxy.ProxyAuthError, match="databricks auth login"):
+        with pytest.raises(proxy.ProxyAuthError, match="databricks auth login"):
             list(auth.auth_flow(httpx.Request("POST", URL)))
 
 
@@ -95,7 +93,7 @@ class TestPump:
                 await src_send.send(msg)
             await src_send.aclose()
 
-            await mcp_proxy._pump(src_recv, dst_send)
+            await proxy._pump(src_recv, dst_send)
 
             received: list[str] = []
             # _pump closed dst_send on exit, so this drains then stops.
@@ -114,7 +112,7 @@ class TestPump:
             dst_send, dst_recv = anyio.create_memory_object_stream(1)
             await src_send.aclose()
 
-            await mcp_proxy._pump(src_recv, dst_send)
+            await proxy._pump(src_recv, dst_send)
 
             with pytest.raises(anyio.EndOfStream):
                 dst_recv.receive_nowait()
@@ -131,21 +129,21 @@ class TestServe:
             captured["func"] = func
             captured["args"] = args
 
-        monkeypatch.setattr(mcp_proxy, "ensure_pat_bearer", lambda profile: True)
-        monkeypatch.setattr(mcp_proxy, "_preflight_token", lambda ws, profile: None)
-        monkeypatch.setattr(mcp_proxy.anyio, "run", fake_run)
+        monkeypatch.setattr(proxy, "ensure_pat_bearer", lambda profile: True)
+        monkeypatch.setattr(proxy, "_preflight_token", lambda ws, profile: None)
+        monkeypatch.setattr(proxy.anyio, "run", fake_run)
 
-        mcp_proxy.serve(URL, WS, "uc-dogfood", use_pat=True)
+        proxy.serve(URL, WS, "uc-dogfood", use_pat=True)
 
-        assert captured["func"] is mcp_proxy._run
+        assert captured["func"] is proxy._run
         assert captured["args"] == (URL, WS, "uc-dogfood")
 
     def test_defaults_profile_none_and_use_pat_false(self, monkeypatch):
         captured: dict = {}
-        monkeypatch.setattr(mcp_proxy, "_preflight_token", lambda ws, profile: None)
-        monkeypatch.setattr(mcp_proxy.anyio, "run", lambda func, *args: captured.update(args=args))
+        monkeypatch.setattr(proxy, "_preflight_token", lambda ws, profile: None)
+        monkeypatch.setattr(proxy.anyio, "run", lambda func, *args: captured.update(args=args))
 
-        mcp_proxy.serve(URL, WS)
+        proxy.serve(URL, WS)
 
         assert captured["args"] == (URL, WS, None)
 
@@ -154,54 +152,54 @@ class TestServe:
         # starts, so the failure is a fast exit rather than a stalled session.
         order: list[str] = []
         monkeypatch.setattr(
-            mcp_proxy, "_preflight_token", lambda ws, profile: order.append("preflight")
+            proxy, "_preflight_token", lambda ws, profile: order.append("preflight")
         )
-        monkeypatch.setattr(mcp_proxy.anyio, "run", lambda func, *args: order.append("bridge"))
+        monkeypatch.setattr(proxy.anyio, "run", lambda func, *args: order.append("bridge"))
 
-        mcp_proxy.serve(URL, WS, "p")
+        proxy.serve(URL, WS, "p")
 
         assert order == ["preflight", "bridge"]
 
     def test_pat_activation_precedes_preflight_and_bridge(self, monkeypatch):
         order: list[str] = []
         monkeypatch.setattr(
-            mcp_proxy,
+            proxy,
             "ensure_pat_bearer",
             lambda profile: order.append(f"pat:{profile}") or True,
         )
         monkeypatch.setattr(
-            mcp_proxy, "_preflight_token", lambda ws, profile: order.append("preflight")
+            proxy, "_preflight_token", lambda ws, profile: order.append("preflight")
         )
-        monkeypatch.setattr(mcp_proxy.anyio, "run", lambda func, *args: order.append("bridge"))
+        monkeypatch.setattr(proxy.anyio, "run", lambda func, *args: order.append("bridge"))
 
-        mcp_proxy.serve(URL, WS, "pat-profile", use_pat=True)
+        proxy.serve(URL, WS, "pat-profile", use_pat=True)
 
         assert order == ["pat:pat-profile", "preflight", "bridge"]
 
     def test_oauth_mode_never_resolves_pat(self, monkeypatch):
         monkeypatch.setattr(
-            mcp_proxy,
+            proxy,
             "ensure_pat_bearer",
             lambda profile: pytest.fail("OAuth mode must not inspect PAT credentials"),
         )
-        monkeypatch.setattr(mcp_proxy, "_preflight_token", lambda ws, profile: None)
-        monkeypatch.setattr(mcp_proxy.anyio, "run", lambda func, *args: None)
+        monkeypatch.setattr(proxy, "_preflight_token", lambda ws, profile: None)
+        monkeypatch.setattr(proxy.anyio, "run", lambda func, *args: None)
 
-        mcp_proxy.serve(URL, WS, "oauth-profile")
+        proxy.serve(URL, WS, "oauth-profile")
 
     def test_missing_pat_fails_before_preflight_without_stdout(self, monkeypatch, capsys):
         calls: list[str] = []
-        monkeypatch.setattr(mcp_proxy, "ensure_pat_bearer", lambda profile: False)
+        monkeypatch.setattr(proxy, "ensure_pat_bearer", lambda profile: False)
         monkeypatch.setattr(
-            mcp_proxy, "_preflight_token", lambda ws, profile: calls.append("preflight")
+            proxy, "_preflight_token", lambda ws, profile: calls.append("preflight")
         )
-        monkeypatch.setattr(mcp_proxy.anyio, "run", lambda func, *args: calls.append("bridge"))
+        monkeypatch.setattr(proxy.anyio, "run", lambda func, *args: calls.append("bridge"))
 
         with pytest.raises(SystemExit) as excinfo:
-            mcp_proxy.serve(URL, WS, "missing", use_pat=True)
+            proxy.serve(URL, WS, "missing", use_pat=True)
 
         captured = capsys.readouterr()
-        assert excinfo.value.code == mcp_proxy.AUTH_FAILURE_EXIT_CODE
+        assert excinfo.value.code == proxy.AUTH_FAILURE_EXIT_CODE
         assert calls == []
         assert "No PAT is available" in captured.err
         assert captured.out == ""
@@ -215,13 +213,13 @@ class TestServe:
         def dead_auth(ws, profile):
             raise RuntimeError("no access token for " + ws + "; run `databricks auth login`")
 
-        monkeypatch.setattr(mcp_proxy, "_preflight_token", dead_auth)
-        monkeypatch.setattr(mcp_proxy.anyio, "run", lambda func, *args: started.append("bridge"))
+        monkeypatch.setattr(proxy, "_preflight_token", dead_auth)
+        monkeypatch.setattr(proxy.anyio, "run", lambda func, *args: started.append("bridge"))
 
         with pytest.raises(SystemExit) as excinfo:
-            mcp_proxy.serve(URL, WS, "p")
+            proxy.serve(URL, WS, "p")
 
-        assert excinfo.value.code == mcp_proxy.AUTH_FAILURE_EXIT_CODE
+        assert excinfo.value.code == proxy.AUTH_FAILURE_EXIT_CODE
         assert started == []  # the bridge never opened
         # Diagnostics go to stderr; stdout is the MCP wire and must stay clean.
         captured = capsys.readouterr()
@@ -234,16 +232,16 @@ class TestServe:
         def raise_group(func, *args):
             raise BaseExceptionGroup(
                 "transport",
-                [mcp_proxy.ProxyAuthError("token expired; run `databricks auth login`")],
+                [proxy.ProxyAuthError("token expired; run `databricks auth login`")],
             )
 
-        monkeypatch.setattr(mcp_proxy, "_preflight_token", lambda ws, profile: None)
-        monkeypatch.setattr(mcp_proxy.anyio, "run", raise_group)
+        monkeypatch.setattr(proxy, "_preflight_token", lambda ws, profile: None)
+        monkeypatch.setattr(proxy.anyio, "run", raise_group)
 
         with pytest.raises(SystemExit) as excinfo:
-            mcp_proxy.serve(URL, WS, "p")
+            proxy.serve(URL, WS, "p")
 
-        assert excinfo.value.code == mcp_proxy.AUTH_FAILURE_EXIT_CODE
+        assert excinfo.value.code == proxy.AUTH_FAILURE_EXIT_CODE
         assert "token expired" in capsys.readouterr().err
 
     def test_non_auth_failures_still_propagate(self, monkeypatch):
@@ -252,37 +250,37 @@ class TestServe:
         def raise_other(func, *args):
             raise ValueError("some transport bug")
 
-        monkeypatch.setattr(mcp_proxy, "_preflight_token", lambda ws, profile: None)
-        monkeypatch.setattr(mcp_proxy.anyio, "run", raise_other)
+        monkeypatch.setattr(proxy, "_preflight_token", lambda ws, profile: None)
+        monkeypatch.setattr(proxy.anyio, "run", raise_other)
 
         with pytest.raises(ValueError, match="some transport bug"):
-            mcp_proxy.serve(URL, WS, "p")
+            proxy.serve(URL, WS, "p")
 
 
 class TestPreflightToken:
     def test_passes_through_when_a_token_is_available(self, monkeypatch):
-        monkeypatch.setattr(mcp_proxy, "get_databricks_token", lambda ws, profile: "tok")
-        mcp_proxy._preflight_token(WS, "p")  # no exception
+        monkeypatch.setattr(proxy, "get_databricks_token", lambda ws, profile: "tok")
+        proxy._preflight_token(WS, "p")  # no exception
 
     def test_surfaces_the_cli_error_message(self, monkeypatch):
         def boom(ws, profile):
             raise RuntimeError("profile is stale; run `databricks auth logout`")
 
-        monkeypatch.setattr(mcp_proxy, "get_databricks_token", boom)
+        monkeypatch.setattr(proxy, "get_databricks_token", boom)
 
         with pytest.raises(RuntimeError, match="databricks auth logout"):
-            mcp_proxy._preflight_token(WS, "p")
+            proxy._preflight_token(WS, "p")
 
     def test_checks_the_same_workspace_and_profile_the_bridge_will_use(self, monkeypatch):
         # The preflight must validate the exact credentials the request-time auth
         # hook uses, or it could pass while the bridge still fails.
         calls: list[tuple[str, str | None]] = []
         monkeypatch.setattr(
-            mcp_proxy,
+            proxy,
             "get_databricks_token",
             lambda ws, profile: calls.append((ws, profile)) or "tok",
         )
 
-        mcp_proxy._preflight_token(WS, "myprofile")
+        proxy._preflight_token(WS, "myprofile")
 
         assert calls == [(WS, "myprofile")]

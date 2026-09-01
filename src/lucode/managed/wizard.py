@@ -36,11 +36,11 @@ from lucode.managed.setup import (
     serialize_managed_config,
     validate_manifest,
 )
-from lucode.mcp import (
+from lucode.mcp.commands import configure_mcp_command
+from lucode.mcp.skills import (
     SKILLS_MCP_KIND,
-    _skill_mcp_locations,
-    configure_mcp_command,
     configure_skills_mcp_command,
+    skill_mcp_locations,
 )
 from lucode.state import load_state
 from lucode.ui import (
@@ -128,7 +128,7 @@ def _mcp_servers_from_state(state: dict) -> list[dict]:
 
 def _skill_names_from_state(state: dict) -> list[str]:
     """Skill schemas registered on the skills MCP connection (``catalog.schema`` entries)."""
-    return [name for name in _skill_mcp_locations(state) if isinstance(name, str) and name]
+    return [name for name in skill_mcp_locations(state) if isinstance(name, str) and name]
 
 
 def _prompt_models_for_agent(tool: str, state: dict) -> dict:

@@ -10,7 +10,8 @@ from urllib.parse import urlencode
 
 from lucode.databricks.auth import get_databricks_token
 from lucode.databricks.transport import http_get_bytes, http_get_json, workspace_hostname
-from lucode.mcp import register_schemaless_skills_connection, setup_mcp_clients
+from lucode.mcp.config import setup_mcp_clients
+from lucode.mcp.skills import register_schemaless_skills_connection
 from lucode.state import load_state
 from lucode.ui import (
     console,

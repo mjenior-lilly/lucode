@@ -48,8 +48,8 @@ AGENT_ENUM_TO_TOOL: dict[str, str] = {
     "CODING_AGENT_OPENCODE": "opencode",
 }
 
-# McpServerType proto enum -> lucode's short type tag. Mirrors the selection prefixes in ``mcp.py``;
-# the actual name->URL resolution happens there when the manifest is applied (a later change).
+# McpServerType proto enum -> lucode's short type tag. Mirrors the selection prefixes in
+# :mod:`lucode.mcp.picker`; name-to-URL resolution happens there when the manifest is applied.
 MCP_TYPE_ENUM_TO_TAG: dict[str, str] = {
     "MCP_SERVER_TYPE_UC_SERVICE": "mcp-service",
     "MCP_SERVER_TYPE_EXTERNAL": "external",
