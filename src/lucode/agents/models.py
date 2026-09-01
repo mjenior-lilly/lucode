@@ -42,13 +42,14 @@ def opencode_default_model(state: dict) -> str | None:
     managed_default = state.get("opencode_default_model")
     if isinstance(managed_default, str) and managed_default:
         return managed_default
-    opencode_models = state.get("opencode_models") or {}
-    if not isinstance(opencode_models, dict):
-        return None
-    for provider in ("anthropic", "gemini", "oss"):
-        models = opencode_models.get(provider) or []
-        if isinstance(models, list) and models:
-            model = models[0]
-            if isinstance(model, str) and model:
-                return model
+    for key in ("opencode_managed_models", "opencode_models"):
+        opencode_models = state.get(key) or {}
+        if not isinstance(opencode_models, dict):
+            continue
+        for provider in ("anthropic", "gemini", "oss"):
+            models = opencode_models.get(provider) or []
+            if isinstance(models, list) and models:
+                model = models[0]
+                if isinstance(model, str) and model:
+                    return model
     return None

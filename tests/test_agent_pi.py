@@ -306,6 +306,13 @@ class TestBuildRuntimeEnv:
         env = pi.build_runtime_env("tok")
         assert env["HOME"] == str(pi.PI_lucode_HOME)
 
+    def test_overwrites_inherited_agent_directory(self, monkeypatch):
+        monkeypatch.setenv("PI_CODING_AGENT_DIR", "/tmp/another-pi-agent")
+
+        env = pi.build_runtime_env("tok")
+
+        assert env["PI_CODING_AGENT_DIR"] == str(pi.PI_CONFIG_DIR)
+
 
 class TestPiValidateCmd:
     def test_starts_with_binary(self):

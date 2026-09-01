@@ -57,12 +57,12 @@ def managed_state_overrides(managed: dict, tool: str) -> dict[str, object]:
     models = _manifest_models(managed, tool)
     if models:
         if tool == "opencode" and isinstance(models, list):
-            # OpenCode selects `provider/model`, so its state is bucketed by provider rather than flat.
-            # No override when nothing buckets: an empty dict would replace the developer's own
-            # models, leaving opencode with none at all.
+            # OpenCode selects `provider/model`, so managed membership is bucketed separately from
+            # persisted discovery. Keeping a distinct transient key makes policy authoritative even
+            # when its inventory happens to equal the discovered inventory.
             buckets = _bucket_by_provider(models)
             if buckets:
-                overrides["opencode_models"] = buckets
+                overrides["opencode_managed_models"] = buckets
         else:
             overrides[f"{tool}_models"] = models
     default_model = _str(_agent_model_config(managed, tool).get("default_model"))

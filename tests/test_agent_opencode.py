@@ -229,6 +229,85 @@ class TestRenderOverlay:
         )
         assert overlay["model"] == "databricks-oss/system.ai.kimi-k2-7-code"
 
+    def test_existing_model_maps_preserve_membership_and_custom_metadata(self):
+        existing = {
+            "provider": {
+                "databricks-anthropic": {
+                    "models": {
+                        "user-claude": {"name": "Mine", "options": {"custom": True}},
+                        "user-haiku": {"name": "Also mine"},
+                    }
+                },
+                "databricks-google": {"models": {"user-gemini": {"custom": "keep"}}},
+                "databricks-oss": {
+                    "models": {"system.ai.glm-5-2": {"limit": {"context": 1, "output": 1}}}
+                },
+            }
+        }
+        discovered = {
+            "anthropic": ["discovered-claude"],
+            "gemini": ["discovered-gemini"],
+            "oss": ["discovered-oss"],
+        }
+        original = json.loads(json.dumps(existing))
+
+        overlay, _ = opencode.render_overlay(
+            "user-claude", "tok", _base_urls(), discovered, existing_config=existing
+        )
+        providers = overlay["provider"]
+
+        anthropic_models = providers["databricks-anthropic"]["models"]
+        assert set(anthropic_models) == {"user-claude", "user-haiku"}
+        claude = anthropic_models["user-claude"]
+        assert claude["name"] == "Mine"
+        assert claude["options"] == {"custom": True, "toolStreaming": False}
+        assert anthropic_models["user-haiku"]["options"] is not claude["options"]
+        assert existing == original
+        assert set(providers["databricks-google"]["models"]) == {"user-gemini"}
+        assert providers["databricks-google"]["models"]["user-gemini"]["custom"] == "keep"
+        glm = providers["databricks-oss"]["models"]["system.ai.glm-5-2"]
+        assert glm["limit"] == {"context": 200000, "output": 25000}
+
+    def test_existing_empty_model_map_is_authoritative(self):
+        existing = {"provider": {"databricks-anthropic": {"models": {}}}}
+        overlay, _ = opencode.render_overlay(
+            "claude-sonnet",
+            "tok",
+            _base_urls(),
+            {"anthropic": ["claude-sonnet"]},
+            existing_config=existing,
+        )
+        assert overlay["provider"]["databricks-anthropic"]["models"] == {}
+
+    def test_invalid_existing_map_bootstraps_from_discovery(self):
+        existing = {"provider": {"databricks-anthropic": {"models": []}}}
+        overlay, _ = opencode.render_overlay(
+            "claude-sonnet",
+            "tok",
+            _base_urls(),
+            {"anthropic": ["claude-sonnet"]},
+            existing_config=existing,
+        )
+        assert set(overlay["provider"]["databricks-anthropic"]["models"]) == {"claude-sonnet"}
+
+    def test_managed_inventory_replaces_membership_and_families_exactly(self):
+        existing = {
+            "provider": {
+                "databricks-anthropic": {"models": {"local": {}}},
+                "databricks-google": {"models": {"local-gemini": {}}},
+            }
+        }
+        overlay, _ = opencode.render_overlay(
+            "admin-claude",
+            "tok",
+            _base_urls(),
+            {"anthropic": ["discovered"], "gemini": ["discovered-gemini"]},
+            existing_config=existing,
+            managed_provider_models={"anthropic": ["admin-claude"]},
+        )
+        assert set(overlay["provider"]) == {"databricks-anthropic"}
+        assert set(overlay["provider"]["databricks-anthropic"]["models"]) == {"admin-claude"}
+
 
 class TestMcpServerConfig:
     # lucode registers the `lucode mcp-proxy ...` bridge as a `local` (stdio) MCP
@@ -362,6 +441,59 @@ class TestOpencodeDefaultModel:
             "opencode_models": {"anthropic": ["claude-sonnet"]},
         }
         assert opencode.default_model(state) == "admin-chosen-default"
+
+    def test_managed_inventory_wins_even_when_discovery_is_present(self):
+        state = {
+            "opencode_managed_models": {"gemini": ["managed-gemini"]},
+            "opencode_models": {"anthropic": ["discovered-claude"]},
+        }
+        assert opencode.default_model(state) == "managed-gemini"
+
+
+class TestTokenRefresh:
+    def test_updates_only_existing_credential_fields(self):
+        config = {
+            "model": "databricks-anthropic/user-model",
+            "mcp": {"server": {"enabled": True}},
+            "provider": {
+                "databricks-anthropic": {
+                    "models": {"user-model": {"name": "Mine"}},
+                    "options": {
+                        "apiKey": "old",
+                        "headers": {"Authorization": "Bearer old", "custom": "keep"},
+                    },
+                },
+                "databricks-google": {"models": {"untouched": {}}},
+                "other": {"options": {"apiKey": "old"}},
+            },
+        }
+        expected_models = json.loads(
+            json.dumps(config["provider"]["databricks-anthropic"]["models"])
+        )
+
+        assert opencode._update_provider_credentials(config, "new") is True
+
+        options = config["provider"]["databricks-anthropic"]["options"]
+        assert options["apiKey"] == "new"
+        assert options["headers"] == {"Authorization": "Bearer new", "custom": "keep"}
+        assert config["provider"]["databricks-anthropic"]["models"] == expected_models
+        assert config["provider"]["databricks-google"] == {"models": {"untouched": {}}}
+        assert config["provider"]["other"]["options"]["apiKey"] == "old"
+        assert config["mcp"] == {"server": {"enabled": True}}
+
+    def test_token_only_refresh_does_not_call_full_writer(self, monkeypatch):
+        monkeypatch.setattr(opencode, "get_databricks_token", lambda *args, **kwargs: "new")
+        refreshed: list[str] = []
+        monkeypatch.setattr(opencode, "_refresh_token_in_file", refreshed.append)
+        monkeypatch.setattr(
+            opencode,
+            "write_tool_config",
+            lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError),
+        )
+        state = {"workspace": WS, "opencode_models": {"anthropic": ["model"]}}
+
+        assert opencode._refresh_token_once(state, token_only=True) == "new"
+        assert refreshed == ["new"]
 
 
 class TestOpencodeValidateCmd:

@@ -1,4 +1,9 @@
-"""OpenCode agent: writes opencode.json with Databricks-backed providers."""
+"""OpenCode agent: writes Databricks-backed providers into native ``opencode.json``.
+
+Existing user model maps define unmanaged membership and retain custom metadata.
+Discovery bootstraps a missing map, while a workspace-managed inventory replaces
+membership exactly. Background refreshes update only existing credential fields.
+"""
 
 from __future__ import annotations
 
@@ -6,6 +11,7 @@ import os
 import signal
 import subprocess
 import threading
+from copy import deepcopy
 
 from lucode.agents.models import opencode_default_model
 from lucode.agents.updates import available_npm_package_update
@@ -91,8 +97,14 @@ def render_overlay(
     token: str,
     opencode_base_urls: dict[str, str],
     opencode_models: dict[str, list[str]],
+    existing_config: dict | None = None,
+    managed_provider_models: dict[str, list[str]] | None = None,
 ) -> tuple[dict, list[list[str]]]:
-    """Return (overlay, managed_key_paths) for opencode.json."""
+    """Return the lucode overlay and owned paths for ``opencode.json``.
+
+    Managed membership wins; otherwise a valid native model map is preserved,
+    with discovery used only when that map is absent or invalid.
+    """
     auth_headers = {"Authorization": f"Bearer {token}"}
     # OpenCode hardcodes `User-Agent: opencode/<ver>` in session/llm.ts for
     # every provider, after the AI SDK's combineHeaders. The provider-level
@@ -102,13 +114,37 @@ def render_overlay(
         "User-Agent": f"lucode/{lucode_version()} opencode/{agent_version('opencode')}",
     }
 
-    anthropic_models = opencode_models.get("anthropic") or []
-    gemini_models = opencode_models.get("gemini") or []
-    oss_models = opencode_models.get("oss") or []
+    existing_providers = (existing_config or {}).get("provider")
+    if not isinstance(existing_providers, dict):
+        existing_providers = {}
+
+    def selected_models(provider_id: str, family: str) -> dict[str, dict]:
+        discovered = opencode_models.get(family) or []
+        if managed_provider_models is not None:
+            selected = managed_provider_models.get(family) or []
+            return {model_id: {} for model_id in selected}
+        existing_provider = existing_providers.get(provider_id)
+        if isinstance(existing_provider, dict) and isinstance(
+            existing_provider.get("models"), dict
+        ):
+            return {
+                model_id: deepcopy(entry) if isinstance(entry, dict) else {}
+                for model_id, entry in existing_provider["models"].items()
+            }
+        return {model_id: {} for model_id in discovered}
+
+    anthropic_models = selected_models("databricks-anthropic", "anthropic")
+    gemini_models = selected_models("databricks-google", "gemini")
+    oss_models = selected_models("databricks-oss", "oss")
+    active_families = (
+        set(managed_provider_models)
+        if managed_provider_models is not None
+        else {family for family, models in opencode_models.items() if models}
+    )
 
     providers: dict = {}
     keys: list[list[str]] = [["model"]]
-    if anthropic_models:
+    if "anthropic" in active_families:
         # @ai-sdk/anthropic injects `eager_input_streaming: true` on tool defs;
         # the Databricks gateway's strict validator rejects it. opencode's
         # auto-disable in transform.ts skips models whose id contains "claude",
@@ -125,10 +161,13 @@ def render_overlay(
                 "apiKey": token,
                 "headers": auth_headers,
             },
-            "models": dict.fromkeys(anthropic_models, anthropic_model_overlay),
+            "models": {
+                model_id: deep_merge_dict(entry, deepcopy(anthropic_model_overlay))
+                for model_id, entry in anthropic_models.items()
+            },
         }
         keys.append(["provider", "databricks-anthropic"])
-    if gemini_models:
+    if "gemini" in active_families:
         providers["databricks-google"] = {
             "npm": "@ai-sdk/google",
             "options": {
@@ -136,10 +175,13 @@ def render_overlay(
                 "apiKey": token,
                 "headers": auth_headers,
             },
-            "models": {m: {"headers": ua_header} for m in gemini_models},
+            "models": {
+                model_id: deep_merge_dict(entry, {"headers": dict(ua_header)})
+                for model_id, entry in gemini_models.items()
+            },
         }
         keys.append(["provider", "databricks-google"])
-    if oss_models:
+    if "oss" in active_families:
         providers["databricks-oss"] = {
             "npm": "@ai-sdk/openai",
             "options": {
@@ -147,11 +189,15 @@ def render_overlay(
                 "apiKey": token,
                 "headers": auth_headers,
             },
-            "models": {m: _oss_model_overlay(m, ua_header) for m in oss_models},
+            "models": {
+                model_id: deep_merge_dict(entry, _oss_model_overlay(model_id, dict(ua_header)))
+                for model_id, entry in oss_models.items()
+            },
         }
         keys.append(["provider", "databricks-oss"])
 
-    overlay: dict = {"model": _resolve_model_selector(model, opencode_models)}
+    selector_models = managed_provider_models or opencode_models
+    overlay: dict = {"model": _resolve_model_selector(model, selector_models)}
     if providers:
         overlay["provider"] = providers
     return overlay, keys
@@ -172,13 +218,15 @@ def write_tool_config(
     opencode_base_urls = state.get("base_urls", {}).get("opencode") or build_opencode_base_urls(
         state["workspace"]
     )
+    existing = read_json_safe(OPENCODE_CONFIG_PATH)
     overlay, managed_keys = render_overlay(
         model,
         token,
         opencode_base_urls,
         state.get("opencode_models") or {},
+        existing_config=existing,
+        managed_provider_models=state.get("opencode_managed_models"),
     )
-    existing = read_json_safe(OPENCODE_CONFIG_PATH)
     providers = existing.get("provider")
     if isinstance(providers, dict):
         for stale in (
@@ -234,11 +282,54 @@ def default_model(state: dict) -> str | None:
     return opencode_default_model(state)
 
 
-def _refresh_token_once(state: dict, *, force_refresh: bool = False) -> str:
+def _update_provider_credentials(config: dict, token: str) -> bool:
+    """Update existing lucode provider credential fields without creating structure."""
+    providers = config.get("provider")
+    if not isinstance(providers, dict):
+        return False
+    changed = False
+    for provider_id in ("databricks-anthropic", "databricks-google", "databricks-oss"):
+        provider = providers.get(provider_id)
+        if not isinstance(provider, dict):
+            continue
+        options = provider.get("options")
+        if not isinstance(options, dict):
+            continue
+        if "apiKey" in options and options["apiKey"] != token:
+            options["apiKey"] = token
+            changed = True
+        headers = options.get("headers")
+        authorization = f"Bearer {token}"
+        if (
+            isinstance(headers, dict)
+            and "Authorization" in headers
+            and headers["Authorization"] != authorization
+        ):
+            headers["Authorization"] = authorization
+            changed = True
+    return changed
+
+
+def _refresh_token_in_file(token: str) -> None:
+    """Refresh credentials in place so user-owned model configuration is untouched."""
+    existing = read_json_safe(OPENCODE_CONFIG_PATH)
+    if _update_provider_credentials(existing, token):
+        write_json_file(OPENCODE_CONFIG_PATH, existing)
+
+
+def _refresh_token_once(
+    state: dict, *, force_refresh: bool = False, token_only: bool = False
+) -> str:
     model = default_model(state)
     if not model:
         raise RuntimeError("No OpenCode model is configured.")
-    _, token = write_tool_config(state, model, force_refresh=force_refresh)
+    token = get_databricks_token(
+        state["workspace"], state.get("profile"), force_refresh=force_refresh
+    )
+    if token_only:
+        _refresh_token_in_file(token)
+    else:
+        write_tool_config(state, model, token=token)
     return token
 
 
@@ -246,7 +337,7 @@ def _refresh_forever(state: dict, stop_event: threading.Event) -> None:
     refresh_failing = False
     while not stop_event.wait(TOKEN_REFRESH_INTERVAL_SECONDS):
         try:
-            _refresh_token_once(state, force_refresh=True)
+            _refresh_token_once(state, force_refresh=True, token_only=True)
             refresh_failing = False
         except RuntimeError as exc:
             if not refresh_failing:
@@ -262,7 +353,7 @@ def build_runtime_env(token: str, state: dict | None = None) -> dict[str, str]:
 
 
 def launch(state: dict, tool_args: list[str]) -> None:
-    """Launch opencode with background token refresh (same pattern as Gemini)."""
+    """Launch OpenCode after a full write, then refresh credentials in place."""
     token = _refresh_token_once(state)
     env = build_runtime_env(token, state)
 

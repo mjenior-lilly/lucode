@@ -155,8 +155,9 @@ class TestStateFileIsNotRewritten:
         assert self._persisted_opencode_models(real_state_file)["anthropic"] == [
             "system.ai.claude-opus-4-1"
         ]
-        # The in-memory dict still carries the managed value for rendering.
-        assert resolved_state["opencode_models"]["anthropic"] == [
+        # Discovery stays intact while the separate transient inventory drives rendering.
+        assert resolved_state["opencode_models"]["anthropic"] == ["system.ai.claude-opus-4-1"]
+        assert resolved_state["opencode_managed_models"]["anthropic"] == [
             "system.ai.claude-opus-4-8",
             "system.ai.claude-sonnet-4-6",
         ]
@@ -252,7 +253,7 @@ class TestManagedStateOverrides:
             }
         }
         assert managed_state_overrides(managed, "opencode") == {
-            "opencode_models": {
+            "opencode_managed_models": {
                 "anthropic": ["system.ai.claude-opus-4-8"],
                 "gemini": ["system.ai.gemini-3-flash"],
                 "oss": ["system.ai.kimi-k2-7-code"],
@@ -265,7 +266,7 @@ class TestManagedStateOverrides:
                 "opencode": {"model_config": {"models": ["system.ai.claude-opus-4-8"]}}
             }
         }
-        buckets = managed_state_overrides(managed, "opencode")["opencode_models"]
+        buckets = managed_state_overrides(managed, "opencode")["opencode_managed_models"]
         assert opencode._resolve_model_selector("system.ai.claude-opus-4-8", buckets) == (
             "databricks-anthropic/system.ai.claude-opus-4-8"
         )
@@ -290,7 +291,7 @@ class TestManagedStateOverrides:
             }
         }
         assert managed_state_overrides(managed, "opencode") == {
-            "opencode_models": {"anthropic": ["system.ai.claude-opus-4-8"]}
+            "opencode_managed_models": {"anthropic": ["system.ai.claude-opus-4-8"]}
         }
 
     def test_no_override_when_nothing_is_servable(self):

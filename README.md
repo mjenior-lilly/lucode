@@ -138,8 +138,13 @@ not clear a remote tracing field during an unrelated update.
 | File | Owner |
 |---|---|
 | `~/.config/opencode/opencode.json` | OpenCode |
-| `~/.lucode/pi-home/.pi/agent/models.json` | Pi (launched with `~/.lucode/pi-home` as its isolated `HOME`) |
+| `~/.lucode/pi-home/.pi/agent/models.json` | Pi (launched with this directory explicitly selected as its agent configuration) |
 | `~/.lucode/managed-settings.json` | Managed policy authored by `lucode setup` |
+
+OpenCode keeps user model inventories in its native `opencode.json`; Pi keeps
+them in its native `models.json`. lucode preserves those inventories during
+ordinary configuration and discovery unless workspace policy supplies an exact
+managed inventory.
 
 Existing agent files are backed up before `lucode` overwrites them. `lucode
 revert` restores those backups. Stale state keys from older clients are ignored

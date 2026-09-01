@@ -382,6 +382,46 @@ wheels = [
 ]
 
 [[package]]
+name = "lucode"
+source = { editable = "." }
+dependencies = [
+    { name = "anyio" },
+    { name = "databricks-sql-connector" },
+    { name = "httpx" },
+    { name = "mcp" },
+    { name = "prompt-toolkit" },
+    { name = "questionary" },
+    { name = "rich" },
+    { name = "typer" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "ruff" },
+    { name = "ty" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "anyio", specifier = ">=4.5" },
+    { name = "databricks-sql-connector", specifier = ">=3.6.0" },
+    { name = "httpx", specifier = ">=0.27.1" },
+    { name = "mcp", specifier = ">=1.28.0" },
+    { name = "prompt-toolkit", specifier = ">=2.0,<4.0" },
+    { name = "questionary", specifier = ">=2.0.0" },
+    { name = "rich", specifier = ">=12.3.0" },
+    { name = "typer", specifier = ">=0.12.0" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=9.0.3" },
+    { name = "ruff", specifier = ">=0.15.12" },
+    { name = "ty" },
+]
+
+[[package]]
 name = "lz4"
 version = "4.4.5"
 source = { registry = "https://elilillyco.jfrog.io/artifactory/api/pypi/Lilly-Python/simple" }
@@ -1137,44 +1177,6 @@ source = { registry = "https://elilillyco.jfrog.io/artifactory/api/pypi/Lilly-Py
 sdist = { url = "https://elilillyco.jfrog.io/artifactory/api/pypi/Lilly-Python/packages/packages/19/f5/cd531b2d15a671a40c0f66cf06bc3570a12cd56eef98960068ebbad1bf5a/tzdata-2026.1.tar.gz", hash = "sha256:67658a1903c75917309e753fdc349ac0efd8c27db7a0cb406a25be4840f87f98" }
 wheels = [
     { url = "https://elilillyco.jfrog.io/artifactory/api/pypi/Lilly-Python/packages/packages/b0/70/d460bd685a170790ec89317e9bd33047988e4bce507b831f5db771e142de/tzdata-2026.1-py2.py3-none-any.whl", hash = "sha256:4b1d2be7ac37ceafd7327b961aa3a54e467efbdb563a23655fbfe0d39cfc42a9" },
-]
-
-[[package]]
-name = "lucode"
-source = { editable = "." }
-dependencies = [
-    { name = "anyio" },
-    { name = "databricks-sql-connector" },
-    { name = "httpx" },
-    { name = "mcp" },
-    { name = "prompt-toolkit" },
-    { name = "questionary" },
-    { name = "typer" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "pytest" },
-    { name = "ruff" },
-    { name = "ty" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "anyio", specifier = ">=4.5" },
-    { name = "databricks-sql-connector", specifier = ">=3.6.0" },
-    { name = "httpx", specifier = ">=0.27.1" },
-    { name = "mcp", specifier = ">=1.28.0" },
-    { name = "prompt-toolkit", specifier = ">=2.0,<4.0" },
-    { name = "questionary", specifier = ">=2.0.0" },
-    { name = "typer", specifier = ">=0.12.0" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "pytest", specifier = ">=9.0.3" },
-    { name = "ruff", specifier = ">=0.15.12" },
-    { name = "ty" },
 ]
 
 [[package]]

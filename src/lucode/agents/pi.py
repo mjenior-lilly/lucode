@@ -360,7 +360,10 @@ def _refresh_forever(state: dict, stop_event: threading.Event) -> None:
 def build_runtime_env(token: str) -> dict[str, str]:
     env = os.environ.copy()
     env["OAUTH_TOKEN"] = token
+    # Pi gives PI_CODING_AGENT_DIR precedence over HOME when locating models.json,
+    # so pin both to prevent an inherited agent directory from bypassing lucode's config.
     env["HOME"] = str(PI_lucode_HOME)
+    env["PI_CODING_AGENT_DIR"] = str(PI_CONFIG_DIR)
     return env
 
 

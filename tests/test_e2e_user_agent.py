@@ -209,6 +209,15 @@ class TestPiUserAgent:
         monkeypatch.setattr(pi, "PI_SETTINGS_PATH", pi_dir / "settings.json")
         monkeypatch.setattr(pi, "PI_BACKUP_PATH", tmp_path / "pi.backup.json")
         monkeypatch.setattr(pi, "PI_SETTINGS_BACKUP_PATH", tmp_path / "pi-settings.backup.json")
+        # Pi model membership is user-owned, so seed the native inventory that
+        # this runtime test expects the generated provider to serve.
+        pi_dir.mkdir(parents=True)
+        config_path.write_text(
+            json.dumps(
+                {"providers": {"databricks-claude": {"models": [{"id": "test-claude-model"}]}}}
+            ),
+            encoding="utf-8",
+        )
         state = {
             "workspace": capture_server.base_url,
             "claude_models": {"sonnet": "test-claude-model"},
