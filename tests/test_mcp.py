@@ -19,7 +19,7 @@ def _unwrap(text: str) -> str:
 
 
 def _proxy_argv() -> list[str]:
-    from ucode.databricks import build_mcp_proxy_argv
+    from ucode.databricks.auth import build_mcp_proxy_argv
 
     return build_mcp_proxy_argv(GH_URL, WS, "p")
 
@@ -32,7 +32,7 @@ class TestBuildMcpProxyArgv:
         assert argv[0].endswith("ucode") or argv[0] == "ucode"
 
     def test_use_pat_appends_flag_and_profile_optional(self):
-        from ucode.databricks import build_mcp_proxy_argv
+        from ucode.databricks.auth import build_mcp_proxy_argv
 
         with_pat = build_mcp_proxy_argv(GH_URL, WS, "p", use_pat=True)
         assert with_pat[-1] == "--use-pat"

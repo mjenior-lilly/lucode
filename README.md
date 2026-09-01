@@ -138,7 +138,7 @@ not clear a remote tracing field during an unrelated update.
 | File | Owner |
 |---|---|
 | `~/.config/opencode/opencode.json` | OpenCode |
-| `~/.pi/agent/models.json` | Pi |
+| `~/.ucode/pi-home/.pi/agent/models.json` | Pi (launched with `~/.ucode/pi-home` as its isolated `HOME`) |
 | `~/.ucode/managed-settings.json` | Managed policy authored by `ucode setup` |
 
 Existing agent files are backed up before `ucode` overwrites them. `ucode

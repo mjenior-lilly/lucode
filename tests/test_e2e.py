@@ -22,14 +22,14 @@ from urllib import request as urllib_request
 
 import pytest
 
-from ucode.databricks import (
+from ucode.databricks.auth import has_valid_databricks_auth
+from ucode.databricks.models import (
     build_shared_base_urls,
     build_tool_base_url,
-    discover_sql_warehouses,
     ensure_ai_gateway_v2,
-    has_valid_databricks_auth,
-    workspace_hostname,
 )
+from ucode.databricks.sql import discover_sql_warehouses
+from ucode.databricks.transport import workspace_hostname
 from ucode.ui import normalize_workspace_url
 
 
@@ -115,7 +115,7 @@ class TestAiGatewayV2:
 
 class TestModelDiscovery:
     def test_discovers_model_families(self, e2e_workspace, e2e_token):
-        from ucode.databricks import discover_model_services
+        from ucode.databricks.models import discover_model_services
 
         anthropic, openai, gemini, oss, reason = discover_model_services(e2e_workspace, e2e_token)
         if not any((anthropic, openai, gemini, oss)):

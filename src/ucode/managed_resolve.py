@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from typing import cast
 
-from ucode.databricks import ANTHROPIC_FAMILIES, classify_model_family
+from ucode.databricks.models import ANTHROPIC_FAMILIES, classify_model_family
 from ucode.state import MANAGED_OVERLAY_KEY
 
 

@@ -7,7 +7,7 @@ import shutil
 import subprocess
 
 from ucode.config_io import ToolSpec
-from ucode.databricks import install_ai_tools, install_databricks_cli
+from ucode.databricks.auth import install_ai_tools, install_databricks_cli
 from ucode.state import load_state, save_state
 from ucode.telemetry import agent_version
 from ucode.ui import (
@@ -27,7 +27,6 @@ from . import opencode, pi
 _MODULES = {"opencode": opencode, "pi": pi}
 TOOL_SPECS: dict[str, ToolSpec] = {name: module.SPEC for name, module in _MODULES.items()}
 TOOL_ALIASES = {"opencode": "opencode", "pi": "pi"}
-BUNDLE_VERSION = 1
 AITOOLS_AGENT_TOKENS = {"opencode": "opencode"}
 
 
@@ -183,7 +182,7 @@ def check_gateway_endpoint(state: dict, tool: str) -> bool:
     if tool == "opencode":
         return any(state.get("opencode_models", {}).values())
     if tool == "pi":
-        return any(state.get(key) for key in ("claude_models", "codex_models", "gemini_models"))
+        return default_model_for_tool("pi", state) is not None
     return False
 
 

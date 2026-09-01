@@ -7,12 +7,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from urllib.parse import urlencode
 
-from ucode.databricks import (
-    _http_get_bytes,
-    _http_get_json,
-    get_databricks_token,
-    workspace_hostname,
-)
+from ucode.databricks.auth import get_databricks_token
+from ucode.databricks.transport import _http_get_bytes, _http_get_json, workspace_hostname
 from ucode.mcp import register_schemaless_skills_connection, setup_mcp_clients
 from ucode.state import load_state
 from ucode.ui import (

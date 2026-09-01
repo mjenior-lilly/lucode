@@ -27,25 +27,26 @@ from ucode.agents import (
 )
 from ucode.agents.pi import PI_SETTINGS_BACKUP_PATH, PI_SETTINGS_PATH
 from ucode.config_io import is_dry_run, restore_file, set_dry_run
-from ucode.databricks import (
+from ucode.databricks.auth import (
     apply_pat_environment,
-    build_shared_base_urls,
-    discover_claude_models,
-    discover_codex_models,
-    discover_gemini_models,
-    discover_model_services,
-    ensure_ai_gateway_v2,
     ensure_databricks_auth,
     ensure_pat_bearer,
     find_profile_name_for_host,
     get_databricks_profiles,
     get_databricks_token,
     install_databricks_cli,
-    is_workspace_admin,
     list_profile_entries,
-    normalize_workspace_url,
     resolve_pat_token,
     run_databricks_login,
+)
+from ucode.databricks.managed import is_workspace_admin
+from ucode.databricks.models import (
+    build_shared_base_urls,
+    discover_claude_models,
+    discover_codex_models,
+    discover_gemini_models,
+    discover_model_services,
+    ensure_ai_gateway_v2,
 )
 from ucode.managed_budget import (
     budget_usage_percent,
@@ -87,6 +88,7 @@ from ucode.state import (
 from ucode.ui import (
     console,
     heading,
+    normalize_workspace_url,
     print_err,
     print_heading,
     print_kv,
@@ -837,10 +839,10 @@ def mcp_proxy_cmd(
     """Bridge a coding agent's stdio MCP transport to a Databricks MCP endpoint.
 
     Each configured client spawns this as a local stdio MCP server (see
-    `ucode configure mcp`); it forwards messages to ``--url`` and injects a
-    freshly-minted OAuth bearer on every upstream request, so the token never
-    expires mid-session. Not meant for interactive use — the agent manages this
-    process's lifecycle."""
+    `ucode configure mcp`); it forwards messages to ``--url`` and injects the
+    configured OAuth credential or a PAT activated once before startup. OAuth
+    tokens are refreshed through the normal token path per request. Not meant
+    for interactive use — the agent manages this process's lifecycle."""
     from ucode.mcp_proxy import serve
 
     state = load_state()

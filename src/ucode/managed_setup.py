@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import cast
 
 import ucode.config_io as config_io
-from ucode.databricks import ANTHROPIC_FAMILIES
+from ucode.databricks.models import ANTHROPIC_FAMILIES
 from ucode.managed_config import (
     AGENT_ENUM_TO_TOOL,
     MCP_TYPE_ENUM_TO_TAG,

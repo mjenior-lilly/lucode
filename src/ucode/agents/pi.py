@@ -1,4 +1,4 @@
-"""Pi coding agent: writes ~/.pi/agent/models.json with Databricks-backed providers.
+"""Pi coding agent: writes the isolated ~/.ucode/pi-home/.pi/agent/models.json.
 
 Pi (https://pi.dev) is a multi-provider coding agent. Workspace discovery can
 render three native-API providers in its `models.json`:
@@ -44,10 +44,12 @@ from ucode.config_io import (
     read_json_safe,
     write_json_file,
 )
-from ucode.databricks import (
+from ucode.databricks.auth import get_databricks_token
+from ucode.databricks.models import (
+    ANTHROPIC_FAMILIES,
     TOKEN_REFRESH_INTERVAL_SECONDS,
     build_pi_base_urls,
-    get_databricks_token,
+    classify_model_family,
 )
 from ucode.state import mark_tool_managed, save_state
 from ucode.telemetry import agent_version, ucode_version
@@ -83,7 +85,6 @@ PROVIDER_KEYS: list[list[str]] = [["providers", name] for name in PROVIDER_NAMES
 # users don't end up with stale entries pointing at routes that 400.
 LEGACY_PROVIDER_NAMES = ("databricks-anthropic", "databricks-codex", "databricks-oss")
 
-DEFAULT_HOST_NAME = "databricks" # To be changed to bedrock once available
 
 def is_update_available() -> tuple[str, str] | None:
     return available_npm_package_update(SPEC["package"])
@@ -116,9 +117,14 @@ def render_overlay(
     codex_models: list[str],
     gemini_models: list[str],
     existing_config: dict | None = None,
+    managed_provider_models: dict[str, list[str]] | None = None,
 ) -> tuple[dict, list[list[str]]]:
-    """Return (overlay, managed_key_paths) for ~/.pi/agent/models.json."""
-    providers: dict = {}
+    """Return the isolated Pi models overlay and ucode-owned key paths.
+
+    Discovery preserves user-maintained model arrays. An explicit managed
+    policy replaces those arrays with the exact servable policy inventory.
+    """
+    providers: dict[str, dict[str, object]] = {}
     keys: list[list[str]] = [["model"]]
     # Pi expands header values that match an env var name. Our UA contains
     # `/` and a space so it can never collide — safe to pass as a literal.
@@ -143,6 +149,13 @@ def render_overlay(
             "compat": compat,
             "headers": ua_headers,
         }
+        models = (
+            [{"id": model_id} for model_id in managed_provider_models["databricks-claude"]]
+            if managed_provider_models is not None
+            else existing_claude.get("models")
+        )
+        if isinstance(models, list):
+            providers["databricks-claude"]["models"] = models
         keys.append(["providers", "databricks-claude"])
     if codex_models:
         existing_openai = existing_providers.get("databricks-openai", {})
@@ -156,8 +169,16 @@ def render_overlay(
             "compat": compat,
             "headers": ua_headers,
         }
+        models = (
+            [{"id": model_id} for model_id in managed_provider_models["databricks-openai"]]
+            if managed_provider_models is not None
+            else existing_openai.get("models")
+        )
+        if isinstance(models, list):
+            providers["databricks-openai"]["models"] = models
         keys.append(["providers", "databricks-openai"])
     if gemini_models:
+        existing_gemini = existing_providers.get("databricks-gemini", {})
         providers["databricks-gemini"] = {
             "baseUrl": pi_base_urls["gemini"],
             "api": "google-generative-ai",
@@ -165,6 +186,16 @@ def render_overlay(
             "authHeader": True,
             "headers": ua_headers,
         }
+        compat = existing_gemini.get("compat")
+        if isinstance(compat, dict):
+            providers["databricks-gemini"]["compat"] = dict(compat)
+        models = (
+            [{"id": model_id} for model_id in managed_provider_models["databricks-gemini"]]
+            if managed_provider_models is not None
+            else existing_gemini.get("models")
+        )
+        if isinstance(models, list):
+            providers["databricks-gemini"]["models"] = models
         keys.append(["providers", "databricks-gemini"])
     overlay: dict = {
         "model": _resolve_model_selector(model, claude_models, codex_models, gemini_models),
@@ -182,14 +213,48 @@ def _update_provider_api_keys(config: dict, token: str) -> bool:
     changed = False
     for name in TOKEN_PROVIDER_NAMES:
         provider = providers.get(name)
-        if (
-            isinstance(provider, dict)
-            and "apiKey" in provider
-            and provider["apiKey"] != token
-        ):
+        if isinstance(provider, dict) and "apiKey" in provider and provider["apiKey"] != token:
             provider["apiKey"] = token
             changed = True
     return changed
+
+
+def _managed_provider_models(state: dict) -> dict[str, list[str]] | None:
+    """Translate a managed Pi allowlist into exact native-provider inventories."""
+    raw_models = state.get("pi_models")
+    if not isinstance(raw_models, list) or not raw_models:
+        return None
+    providers = {name: [] for name in PROVIDER_NAMES}
+    for model_id in raw_models:
+        if not isinstance(model_id, str) or not model_id:
+            continue
+        family = classify_model_family(model_id)
+        if family in ANTHROPIC_FAMILIES:
+            providers["databricks-claude"].append(model_id)
+        elif family == "codex":
+            providers["databricks-openai"].append(model_id)
+        elif family == "gemini":
+            providers["databricks-gemini"].append(model_id)
+    return providers if any(providers.values()) else None
+
+
+def _managed_model_families(
+    state: dict,
+) -> tuple[dict[str, str], list[str], list[str]] | None:
+    """Return managed models in Pi's discovery-family shape when any are servable."""
+    providers = _managed_provider_models(state)
+    if providers is None:
+        return None
+    claude: dict[str, str] = {}
+    for model_id in providers["databricks-claude"]:
+        family = classify_model_family(model_id)
+        if family in ANTHROPIC_FAMILIES:
+            claude.setdefault(family, model_id)
+    return (
+        claude,
+        providers["databricks-openai"],
+        providers["databricks-gemini"],
+    )
 
 
 def write_tool_config(
@@ -206,18 +271,27 @@ def write_tool_config(
         )
     pi_base_urls = state.get("base_urls", {}).get("pi") or build_pi_base_urls(state["workspace"])
     existing = read_json_safe(PI_CONFIG_PATH)
+    managed_families = _managed_model_families(state)
+    managed_provider_models = _managed_provider_models(state) if managed_families else None
+    if managed_families is None:
+        claude_models = state.get("claude_models") or {}
+        codex_models = state.get("codex_models") or []
+        gemini_models = state.get("gemini_models") or []
+    else:
+        claude_models, codex_models, gemini_models = managed_families
     overlay, managed_keys = render_overlay(
         model,
         token,
         pi_base_urls,
-        state.get("claude_models") or {},
-        state.get("codex_models") or [],
-        state.get("gemini_models") or [],
+        claude_models,
+        codex_models,
+        gemini_models,
         existing_config=existing,
+        managed_provider_models=managed_provider_models,
     )
     providers = existing.get("providers")
     if isinstance(providers, dict):
-        for stale in LEGACY_PROVIDER_NAMES:
+        for stale in (*LEGACY_PROVIDER_NAMES, *PROVIDER_NAMES):
             providers.pop(stale, None)
     merged = deep_merge_dict(existing, overlay)
     _update_provider_api_keys(merged, token)
@@ -249,50 +323,40 @@ def _refresh_token_in_file(token: str) -> None:
 
 
 def default_model(state: dict) -> str | None:
-    """
-    Return the configured Pi default model, or the built-in default. 
-    Fallback to provider progression: OpenAI -> Anthropic -> Google.
-    """
-    # Fetch configured models
-    selected = None
-    user_configured = read_json_safe(PI_SETTINGS_PATH).get("defaultModel") or None
+    """Select Pi's default deterministically from the current resolved state."""
+    managed_default = state.get("pi_default_model")
+    if isinstance(managed_default, str) and managed_default:
+        return managed_default
+
     managed_models = state.get("pi_models")
-    anthropic_models = state.get("claude_models") or {}
-    openai_models = state.get("codex_models") or []
-    google_models = state.get("gemini_models") or []
+    if isinstance(managed_models, list):
+        for model in managed_models:
+            if (
+                isinstance(model, str)
+                and model
+                and classify_model_family(model) in (*ANTHROPIC_FAMILIES, "codex", "gemini")
+            ):
+                return model
 
-    # User configuration takes precedence
-    if user_configured:
-        selected = user_configured
+    claude_models = state.get("claude_models") or {}
+    if isinstance(claude_models, dict):
+        for family in ANTHROPIC_FAMILIES:
+            model = claude_models.get(family)
+            if isinstance(model, str) and model:
+                return model
 
-    # Managed allowlist
-    elif isinstance(managed_models, list) and managed_models:
-        selected = managed_models[0]
-
-    # Prioritize OpenAI --> Anthropic --> Google
-    # OpenAI
-    elif openai_models:
-        for family in ("sol", "terra", "luna"):
-            for model in openai_models:
-                if family in model:
-                    selected = model
-                    break
-    # Anthropic
-    elif anthropic_models:
-        for family in anthropic_models.keys():
-            selected = anthropic_models.get(family)
-    # Google
-    elif google_models:
-        for family in ("pro", "flash", "flash-lite"):
-            for model in google_models:
-                if family in model:
-                    selected = model
-                    break
-
-    return selected
+    for key in ("codex_models", "gemini_models"):
+        models = state.get(key) or []
+        if isinstance(models, list):
+            for model in models:
+                if isinstance(model, str) and model:
+                    return model
+    return None
 
 
-def _refresh_token_once(state: dict, *, force_refresh: bool = False, token_only: bool = False) -> str:
+def _refresh_token_once(
+    state: dict, *, force_refresh: bool = False, token_only: bool = False
+) -> str:
     model = default_model(state)
     if not model:
         raise RuntimeError("No Pi model is available on this workspace.")

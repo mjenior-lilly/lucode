@@ -16,10 +16,10 @@ from ucode.config_io import (
     read_json_safe,
     write_json_file,
 )
-from ucode.databricks import (
+from ucode.databricks.auth import get_databricks_token
+from ucode.databricks.models import (
     TOKEN_REFRESH_INTERVAL_SECONDS,
     build_opencode_base_urls,
-    get_databricks_token,
     model_token_limits,
 )
 from ucode.state import mark_tool_managed, save_state

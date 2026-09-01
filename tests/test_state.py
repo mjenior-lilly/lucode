@@ -224,6 +224,21 @@ class TestBuildAgentState:
         result = build_agent_state({"base_urls": FAKE_URLS})
         assert result == {}
 
+    def test_pi_model_is_derived_from_state_not_settings_file(self, tmp_path, monkeypatch):
+        from ucode.agents import pi
+
+        settings = tmp_path / "settings.json"
+        settings.write_text('{"defaultModel": "stale"}')
+        monkeypatch.setattr(pi, "PI_SETTINGS_PATH", settings)
+        result = build_agent_state(
+            {
+                "workspace": "https://example.databricks.com",
+                "base_urls": FAKE_URLS,
+                "gemini_models": ["current"],
+            }
+        )
+        assert result["pi"]["model"] == "current"
+
     def test_use_pat_state_builds_pat_auth_command(self):
         result = build_agent_state(
             {

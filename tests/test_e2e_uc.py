@@ -15,10 +15,8 @@ from __future__ import annotations
 import pytest
 
 from ucode.cli import configure_shared_state
-from ucode.databricks import (
-    discover_model_services,
-    list_mcp_services,
-)
+from ucode.databricks.mcp_discovery import list_mcp_services
+from ucode.databricks.models import discover_model_services
 from ucode.state import load_state
 
 

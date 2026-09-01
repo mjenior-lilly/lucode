@@ -11,15 +11,13 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import cast
 
-from ucode.databricks import (
-    SqlWarehouse,
+from ucode.databricks.auth import (
     apply_pat_environment,
-    discover_sql_warehouses,
     ensure_databricks_auth,
     get_databricks_token,
-    resolve_current_budget_spend,
-    run_usage_query,
 )
+from ucode.databricks.managed import resolve_current_budget_spend
+from ucode.databricks.sql import SqlWarehouse, discover_sql_warehouses, run_usage_query
 from ucode.state import load_state
 from ucode.ui import (
     console,

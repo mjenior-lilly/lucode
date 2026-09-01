@@ -201,7 +201,7 @@ class TestAuthTokenCommand:
         # --use-pat reads the profile's static PAT, exports it as
         # DATABRICKS_BEARER, and get_databricks_token returns it directly.
         monkeypatch.delenv("DATABRICKS_BEARER", raising=False)
-        monkeypatch.setattr("ucode.databricks.resolve_pat_token", lambda p: "dapi-pat")
+        monkeypatch.setattr("ucode.databricks.auth.resolve_pat_token", lambda p: "dapi-pat")
         with (
             patch("ucode.cli.load_state", return_value={"workspace": "https://ws"}),
             patch(
@@ -217,7 +217,7 @@ class TestAuthTokenCommand:
         # A stray empty DATABRICKS_BEARER must not shadow the PAT and force the
         # OAuth path (the regression that motivated ensure_pat_bearer).
         monkeypatch.setenv("DATABRICKS_BEARER", "")
-        monkeypatch.setattr("ucode.databricks.resolve_pat_token", lambda p: "dapi-pat")
+        monkeypatch.setattr("ucode.databricks.auth.resolve_pat_token", lambda p: "dapi-pat")
         with (
             patch("ucode.cli.load_state", return_value={"workspace": "https://ws"}),
             patch(
@@ -233,7 +233,7 @@ class TestAuthTokenCommand:
         # --use-pat with no resolvable PAT must error, NOT fall through to OAuth
         # (which can't serve a PAT-only profile and yields a misleading message).
         monkeypatch.delenv("DATABRICKS_BEARER", raising=False)
-        monkeypatch.setattr("ucode.databricks.resolve_pat_token", lambda p: None)
+        monkeypatch.setattr("ucode.databricks.auth.resolve_pat_token", lambda p: None)
         with (
             patch("ucode.cli.load_state", return_value={"workspace": "https://ws"}),
             patch("ucode.cli.get_databricks_token", return_value="oauth-tok") as fetch,
@@ -247,7 +247,7 @@ class TestAuthTokenCommand:
     def test_use_pat_honors_non_empty_bearer_env(self, monkeypatch):
         # A real pre-set bearer (CI escape hatch) wins over the profile PAT.
         monkeypatch.setenv("DATABRICKS_BEARER", "ci-bearer")
-        monkeypatch.setattr("ucode.databricks.resolve_pat_token", lambda p: "dapi-pat")
+        monkeypatch.setattr("ucode.databricks.auth.resolve_pat_token", lambda p: "dapi-pat")
         with (
             patch("ucode.cli.load_state", return_value={"workspace": "https://ws"}),
             patch(

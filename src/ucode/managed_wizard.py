@@ -19,11 +19,10 @@ from typing import cast
 
 from ucode.agents import TOOL_SPECS, check_gateway_endpoint
 from ucode.config_io import is_dry_run
-from ucode.databricks import (
+from ucode.databricks.auth import ensure_databricks_auth, get_databricks_token
+from ucode.databricks.managed import (
     create_coding_agent_config,
     delete_coding_agent_config,
-    ensure_databricks_auth,
-    get_databricks_token,
     is_workspace_admin,
     list_workspace_budgets,
     update_coding_agent_config,

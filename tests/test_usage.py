@@ -9,7 +9,7 @@ from decimal import Decimal
 import pytest
 
 import ucode.usage as usage_mod
-from ucode.databricks import SqlWarehouse
+from ucode.databricks.sql import SqlWarehouse
 from ucode.ui import label, value
 from ucode.usage import (
     build_current_user_query,

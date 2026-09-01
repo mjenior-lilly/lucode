@@ -24,13 +24,15 @@ from questionary.question import Question
 from questionary.styles import merge_styles_default
 
 from ucode.agents import opencode
-from ucode.databricks import (
+from ucode.databricks.auth import (
     apply_pat_environment,
     build_mcp_proxy_argv,
-    build_mcp_service_url,
-    build_skills_mcp_url,
     ensure_databricks_auth,
     get_databricks_token,
+)
+from ucode.databricks.mcp_discovery import (
+    build_mcp_service_url,
+    build_skills_mcp_url,
     list_all_mcp_services,
     list_databricks_apps,
     list_databricks_connections,
@@ -38,8 +40,8 @@ from ucode.databricks import (
     list_mcp_services,
     list_uc_functions_catalog_schemas,
     list_vector_search_catalog_schemas,
-    workspace_hostname,
 )
+from ucode.databricks.transport import workspace_hostname
 from ucode.state import load_full_state, load_state, save_state
 from ucode.ui import (
     console,
@@ -52,7 +54,6 @@ from ucode.ui import (
 )
 
 MCP_USER_SCOPE = "user"
-MCP_CLEANUP_SCOPES = ("local", "project", MCP_USER_SCOPE)
 MCP_PICKER_VISIBLE_ROWS = 10
 
 

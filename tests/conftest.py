@@ -6,12 +6,12 @@ import os
 
 import pytest
 
-from ucode.databricks import (
+from ucode.databricks.auth import get_databricks_token
+from ucode.databricks.models import (
     build_shared_base_urls,
     discover_codex_models,
     discover_gemini_models,
     discover_model_services,
-    get_databricks_token,
 )
 from ucode.ui import normalize_workspace_url
 
@@ -24,7 +24,7 @@ def _isolate_ucode_state(tmp_path, monkeypatch):
     it can never touch the developer's real ~/.ucode/state.json.
     """
     import ucode.config_io as config_io_mod
-    import ucode.databricks as databricks_mod
+    import ucode.databricks.models as databricks_models
     import ucode.state as state_mod
 
     state_dir = tmp_path / ".ucode"
@@ -33,7 +33,7 @@ def _isolate_ucode_state(tmp_path, monkeypatch):
     monkeypatch.setattr(config_io_mod, "APP_DIR", state_dir)
     # The model-services listing is memoized for the life of the process, so without this a cached
     # result would leak into the next test and make a stubbed listing look like it was never called.
-    databricks_mod.clear_model_services_cache()
+    databricks_models.clear_model_services_cache()
 
 
 def _workspace() -> str:

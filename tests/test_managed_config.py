@@ -7,7 +7,7 @@ import stat
 
 import pytest
 
-import ucode.databricks as db_mod
+import ucode.databricks.managed as db_mod
 import ucode.managed_config as mc_mod
 from ucode.managed_config import (
     get_managed_config,

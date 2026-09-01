@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).parent.parent
@@ -20,6 +21,19 @@ ROOT = Path(__file__).parent.parent
 
 def _run(cmd: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, capture_output=True, text=True, cwd=ROOT)
+
+
+def test_direct_runtime_imports_are_declared():
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    declared = {
+        requirement.split("<", 1)[0].split(">", 1)[0] for requirement in project["dependencies"]
+    }
+    import_distributions = {
+        "anyio": "anyio",
+        "prompt_toolkit": "prompt-toolkit",
+        "rich": "rich",
+    }
+    assert set(import_distributions.values()) <= declared
 
 
 def test_ruff_check():

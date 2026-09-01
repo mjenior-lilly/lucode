@@ -5,7 +5,8 @@ from __future__ import annotations
 import json
 
 from ucode.config_io import APP_DIR, is_dry_run
-from ucode.databricks import build_auth_shell_command, build_shared_base_urls
+from ucode.databricks.auth import build_auth_shell_command
+from ucode.databricks.models import build_shared_base_urls
 
 STATE_PATH = APP_DIR / "state.json"
 STATE_VERSION = 3
@@ -13,7 +14,6 @@ STATE_VERSION = 3
 # Present only in memory: the layered values render the agent settings files, while `save_state`
 # restores what's under it so `state.json` keeps recording the developer's own configuration.
 MANAGED_OVERLAY_KEY = "_managed_overlay"
-AUTH_COMMAND_TIMEOUT_MS = 5000
 AUTH_REFRESH_INTERVAL_MS = 900_000
 
 

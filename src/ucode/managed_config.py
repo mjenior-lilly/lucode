@@ -3,7 +3,7 @@
 An org admin authors a ``CodingAgentConfig`` through the Databricks AI Gateway; developers read it
 (non-admin) and ``ucode`` applies it locally. This module owns the developer-read half:
 
-- fetching the raw manifest (via :func:`ucode.databricks.fetch_managed_coding_agent_configs`),
+- fetching the raw manifest (via :func:`ucode.databricks.managed.fetch_managed_coding_agent_configs`),
 - normalizing the proto-JSON into a stable internal dict keyed by ucode's own tool names,
 - persisting it to ``~/.ucode/managed-state.json`` (0600), and
 - re-reading it on each launch, falling back to the persisted copy when the read fails.
@@ -23,10 +23,10 @@ from pathlib import Path
 from typing import cast
 
 import ucode.config_io as config_io
-from ucode.databricks import (
+from ucode.databricks.auth import get_databricks_token
+from ucode.databricks.managed import (
     fetch_managed_coding_agent_configs,
     fetch_model_recommendation,
-    get_databricks_token,
 )
 from ucode.ui import console, print_warning
 
@@ -38,7 +38,6 @@ MANAGED_CONFIG_ENV_VAR = "ENABLE_MANAGED_AGENT_CONFIG"
 
 # Shown to a developer when their workspace has no admin-defined managed config yet — the normal
 # case, not an error. Kept here so the CLI (which surfaces it) uses one consistent message.
-NO_MANAGED_CONFIG_MESSAGE = "No coding-agent config has been set up by your workspace admin yet."
 
 # CodingAgent proto enum -> ucode tool name. Anything unrecognized (e.g. a newer agent this ucode
 # build doesn't know) is dropped during normalization rather than guessed at. Public because the

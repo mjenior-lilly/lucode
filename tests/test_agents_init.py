@@ -153,6 +153,24 @@ class TestCheckGatewayEndpoint:
     def test_pi_unavailable_when_no_models(self):
         assert check_gateway_endpoint({}, "pi") is False
 
+    @pytest.mark.parametrize(
+        "state, expected",
+        [
+            ({"claude_models": {"sonnet": "claude"}}, "claude"),
+            ({"codex_models": ["openai"]}, "openai"),
+            ({"gemini_models": ["gemini"]}, "gemini"),
+            (
+                {"pi_models": ["system.ai.claude-opus-4-8"]},
+                "system.ai.claude-opus-4-8",
+            ),
+            ({"pi_default_model": "managed-default"}, "managed-default"),
+            ({}, None),
+        ],
+    )
+    def test_pi_availability_agrees_with_default_selection(self, state, expected):
+        assert default_model_for_tool("pi", state) == expected
+        assert check_gateway_endpoint(state, "pi") is (expected is not None)
+
     def test_removed_harness_is_never_available(self):
         assert check_gateway_endpoint({"claude_models": {"opus": "o"}}, "claude") is False
 
@@ -359,18 +377,6 @@ class TestInstallToolBinary:
 
 class TestConfigureSelectedTools:
     def test_merges_with_existing_available_tools(self, monkeypatch):
-        monkeypatch.setattr("ucode.agents.configure_tool", lambda tool, state, model=None: state)
-        monkeypatch.setattr("ucode.agents.save_state", lambda s: None)
-
-        state = {
-            "workspace": "https://x.databricks.com",
-            "available_tools": ["opencode"],
-            "claude_models": {"sonnet": "s4"},
-        }
-        result = configure_selected_tools(state, ["pi"])
-        assert set(result["available_tools"]) == {"opencode", "pi"}
-
-    def test_adds_new_tool_to_available_tools(self, monkeypatch):
         monkeypatch.setattr("ucode.agents.configure_tool", lambda tool, state, model=None: state)
         monkeypatch.setattr("ucode.agents.save_state", lambda s: None)
 

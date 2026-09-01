@@ -39,6 +39,8 @@ def _overlay(model: str, token: str = "tok", **kwargs):
         bundle["claude_models"],
         bundle["codex_models"],
         bundle["gemini_models"],
+        existing_config=bundle.get("existing_config"),
+        managed_provider_models=bundle.get("managed_provider_models"),
     )
 
 
@@ -119,14 +121,13 @@ class TestRenderOverlayCompatFlags:
         compat = overlay["providers"]["databricks-claude"]["compat"]
         assert compat["supportsEagerToolInputStreaming"] is False
 
-    def test_openai_and_gemini_have_no_compat_flags(self):
-        # Their gateway routes accept pi's request shape as-is.
+    def test_openai_enables_strict_mode_and_gemini_adds_no_required_compat(self):
         overlay, _ = _overlay(
             "gpt-5",
             codex_models=["gpt-5"],
             gemini_models=["gemini-2"],
         )
-        assert "compat" not in overlay["providers"]["databricks-openai"]
+        assert overlay["providers"]["databricks-openai"]["compat"]["supportsStrictMode"]
         assert "compat" not in overlay["providers"]["databricks-gemini"]
 
 
@@ -147,21 +148,46 @@ class TestRenderOverlayAuthAndModels:
         for name in ("databricks-claude", "databricks-openai", "databricks-gemini"):
             assert overlay["providers"][name]["authHeader"] is True
 
-    def test_claude_models_listed(self):
-        claude_models = {"opus": "claude-opus", "sonnet": "claude-sonnet"}
-        overlay, _ = _overlay("claude-sonnet", claude_models=claude_models)
-        ids = {m["id"] for m in overlay["providers"]["databricks-claude"]["models"]}
-        assert ids == {"claude-opus", "claude-sonnet"}
+    def test_discovery_does_not_inject_model_inventories(self):
+        overlay, _ = _overlay(
+            "claude-sonnet",
+            claude_models={"sonnet": "claude-sonnet"},
+            codex_models=["gpt-5"],
+            gemini_models=["gemini-2"],
+        )
+        assert all("models" not in provider for provider in overlay["providers"].values())
 
-    def test_openai_models_listed(self):
-        overlay, _ = _overlay("gpt-5", codex_models=["gpt-5", "gpt-5-mini"])
-        ids = {m["id"] for m in overlay["providers"]["databricks-openai"]["models"]}
-        assert ids == {"gpt-5", "gpt-5-mini"}
-
-    def test_gemini_models_listed(self):
-        overlay, _ = _overlay("gemini-2", gemini_models=["gemini-2", "gemini-2-pro"])
-        ids = {m["id"] for m in overlay["providers"]["databricks-gemini"]["models"]}
-        assert ids == {"gemini-2", "gemini-2-pro"}
+    def test_discovery_preserves_user_models_and_custom_compat(self):
+        existing = {
+            "providers": {
+                "databricks-claude": {
+                    "models": [{"id": "user-claude"}],
+                    "compat": {"supportsLongCacheRetention": True},
+                },
+                "databricks-openai": {
+                    "models": [{"id": "user-openai"}],
+                    "compat": {"custom": True},
+                },
+                "databricks-gemini": {
+                    "models": [{"id": "user-gemini"}],
+                    "compat": {"custom": True},
+                },
+            }
+        }
+        overlay, _ = _overlay(
+            "claude-sonnet",
+            claude_models={"sonnet": "claude-sonnet"},
+            codex_models=["gpt-5"],
+            gemini_models=["gemini-2"],
+            existing_config=existing,
+        )
+        for name in pi.PROVIDER_NAMES:
+            assert overlay["providers"][name]["models"] == existing["providers"][name]["models"]
+            assert (
+                overlay["providers"][name]["compat"]["custom"]
+                if name != "databricks-claude"
+                else overlay["providers"][name]["compat"]["supportsLongCacheRetention"]
+            )
 
 
 class TestRenderOverlayManagedKeys:
@@ -227,6 +253,14 @@ class TestPiDefaultModel:
     def test_falls_back_to_gemini(self):
         state = {"claude_models": {}, "codex_models": [], "gemini_models": ["gemini-2"]}
         assert pi.default_model(state) == "gemini-2"
+
+    def test_ignores_conflicting_settings_from_another_workspace(self, tmp_path, monkeypatch):
+        settings = tmp_path / "settings.json"
+        settings.write_text(json.dumps({"defaultModel": "stale-workspace-model"}))
+        monkeypatch.setattr(pi, "PI_SETTINGS_PATH", settings)
+        assert pi.default_model({"codex_models": ["current-workspace-model"]}) == (
+            "current-workspace-model"
+        )
 
     def test_returns_none_when_empty(self):
         assert pi.default_model({}) is None
@@ -342,6 +376,37 @@ class TestWriteToolConfig:
         for legacy in ("databricks-anthropic", "databricks-codex", "databricks-oss"):
             assert legacy not in written_providers
         assert "databricks-claude" in written_providers
+
+    def test_managed_policy_replaces_provider_inventories_and_excludes_families(
+        self, tmp_path, monkeypatch
+    ):
+        pi_mod, config_file, _, _ = self._setup(tmp_path, monkeypatch)
+        config_file.write_text(
+            json.dumps(
+                {
+                    "providers": {
+                        "databricks-claude": {
+                            "models": [{"id": "excluded-claude"}],
+                            "compat": {"custom": True},
+                        },
+                        "databricks-openai": {"models": [{"id": "excluded-openai"}]},
+                        "databricks-gemini": {"models": [{"id": "excluded-gemini"}]},
+                        "user-provider": {"keep": True},
+                    }
+                }
+            ),
+            encoding="utf-8",
+        )
+        state = self._state(pi_models=["system.ai.claude-sonnet-4-5", "system.ai.gpt-5"])
+        with patch("ucode.agents.pi.save_state"):
+            pi_mod.write_tool_config(state, "system.ai.gpt-5", token="tok")
+
+        providers = json.loads(config_file.read_text())["providers"]
+        assert providers["databricks-claude"]["models"] == [{"id": "system.ai.claude-sonnet-4-5"}]
+        assert providers["databricks-claude"]["compat"]["custom"] is True
+        assert providers["databricks-openai"]["models"] == [{"id": "system.ai.gpt-5"}]
+        assert "databricks-gemini" not in providers
+        assert providers["user-provider"] == {"keep": True}
 
     def test_config_written_with_correct_model_and_token(self, tmp_path, monkeypatch):
         pi_mod, config_file, _, _ = self._setup(tmp_path, monkeypatch)
@@ -471,3 +536,10 @@ class TestManagedDefaultModel:
     def test_falls_back_to_pi_models_without_default(self):
         state = {"pi_models": ["system.ai.claude-opus-4-8"]}
         assert pi.default_model(state) == "system.ai.claude-opus-4-8"
+
+    def test_unservable_pi_models_fall_back_to_discovered_models(self):
+        state = {
+            "pi_models": ["system.ai.kimi-k2-7-code"],
+            "claude_models": {"opus": "discovered-opus"},
+        }
+        assert pi.default_model(state) == "discovered-opus"
