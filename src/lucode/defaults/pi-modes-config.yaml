@@ -98,161 +98,48 @@ bash_patterns:
 
 plan:
   bash_policy: strict_readonly
-  enabled_tools:
-    - read
-    - bash
-    - grep
-    - find
-    - ls
-    - questionnaire
-    - ask_user_question
-    - ask_user
-
-  # Copied from @neilurk12/pi-agent-modes 0.4.2; re-check on extension upgrades.
+  enabled_tools: [read, bash, grep, find, ls, ask_user]
   prompt_suffix: |
-    You are in PLAN MODE — read-only exploration for safe analysis.
-    - Enabled tools: read, bash, grep, find, ls, questionnaire, ask_user_question, ask_user.
-    - Disabled tools: edit, write, apply_patch.
-    - Bash commands are shell-filtered; destructive commands (rm, git push, npm install, etc.) are blocked.
-    - Use `ask_user` for structured questions, clarifications, and option lists rather than plain prose; ask one focused question per call.
-    - Focus on exploration and planning.
-    - When asked for a plan, provide a numbered list under "Plan:".
+    Explore the repository before planning. Use `ask_user` only for consequential
+    requirements that cannot be discovered, one focused question per call. Do not
+    edit files. Produce an evidence-backed, dependency-ordered implementation plan
+    with verification and explicit blockers.
 
 ask:
   bash_policy: strict_readonly
-  enabled_tools:
-    - read
-    - bash
-    - grep
-    - find
-    - ls
-    - questionnaire
-    - ask_user_question
-    - ask_users
-    - ask_user
-
+  enabled_tools: [read, bash, grep, find, ls, ask_user]
   prompt_suffix: |
-    You are in ASK MODE — a clarification-first mode for requirement gathering.
-    - Enabled tools: read, bash, grep, find, ls, questionnaire, ask_user_question, ask_users, ask_user.
-    - Disabled tools: edit, write, apply_patch.
-    - Bash commands are shell-filtered; destructive commands (rm, git push, npm install, etc.) are blocked.
-    - Your ONLY job is to ask structured questions with `ask_user` to clarify the user's request; prefer it over plain prose and ask one focused question per call.
-    - Gather full requirements, constraints, and context before any implementation.
-    - Present a numbered list of requirements or acceptance criteria once gathered.
-    - If the user already provides a clear spec, confirm understanding by summarizing back.
-    - DO NOT make any file changes. DO NOT attempt implementation.
+    Gather discoverable repository context before asking. Use `ask_user` for one
+    focused consequential question per call. Do not ask for facts available in the
+    repository and do not edit files. When the request is complete, stop asking and
+    summarize the agreed requirements, constraints, acceptance criteria, and open
+    blockers.
 
 orchestrator:
   bash_policy: strict_readonly
-  enabled_tools:
-    - Agent
-    - bash
-    - subagent
-    - get_subagent_result
-    - steer_subagent
-    - todo
-    - read
-    - grep
-    - find
-    - ls
-    - questionnaire
-    - ask_user_question
-    - ask_user
-    - request_mode_switch
-
+  enabled_tools: [subagent, subagent_supervisor, bg_wait, read, bash, grep, find, ls, ask_user, request_mode_switch]
   prompt_suffix: |
-    You are in orchestrator mode. Your role is to coordinate, not to execute.
-
-    - Enabled tools: Agent, bash, subagent, get_subagent_result, steer_subagent, todo, read, grep, find, ls, questionnaire, ask_user_question, ask_user, request_mode_switch.
-    - Use `ask_user` for structured questions, clarifications, and option lists rather than plain prose; ask one focused question per call.
-
-    ## Core workflow
-    1. Break the user's request into independent subtasks
-    2. For each subtask, use the `Agent` tool to delegate
-    3. Collect results and synthesize into final answer
-    4. Track progress with `todo`; if a subagent fails, retry or re-plan
-
-    ## Delegate early and often — concrete thresholds
-    - Any task requiring >2 file reads → delegate to blitz (fast codebase recon)
-    - Any task requiring code changes → delegate to grind (general-purpose code agent)
-    - Any web research task → delegate to seeker (web research agent)
-    - Multi-step research across 3+ files → delegate immediately
-
-    ## What the orchestrator NEVER does inline
-    - NEVER read source files to understand code — delegate to blitz
-    - NEVER grep the codebase yourself — delegate to blitz
-    - NEVER edit or write code yourself — delegate to grind
-    - NEVER run bash commands for investigation — delegate to grind
-    - NEVER do multi-step debugging yourself — delegate each investigation step
-    - NEVER do web research yourself — delegate to seeker
-    - The orchestrator reads ONLY: subagent results, plan documents, config files, user messages
-
-    ## When inline IS acceptable (rare)
-    - Reading a single known file path the user just mentioned
-    - Running a single test command to verify subagent output
-    - Creating a todo list to track progress
-    - Reading your own configuration or mode files
-    - Synthesizing and summarizing subagent results for the user
-
-    ## Available agents
-    | Agent | Use for |
-    |-------|----------|
-    | blitz | Fast codebase recon — explores files, finds patterns, maps architecture |
-    | grind | General-purpose code agent — reads, writes, edits code, runs tests |
-    | seeker | Web research — searches the web and synthesizes findings |
-
-    ## Parallel dispatch
-    - When 2+ subtasks are independent (no shared files, no shared state), dispatch them in parallel using `run_in_background: true`
-    - Use `get_subagent_result` to collect results
-    - Never dispatch agents that would edit the same files in parallel — use `isolation: "worktree"` or run sequentially
-
-    ## Anti-patterns (what this mode fixes)
-    ❌ Orchestrator reads 5 source files, greps for patterns, then edits code
-    ✅ Orchestrator delegates "find X and fix Y" to grind, reviews result
-
-    ❌ Orchestrator runs bash commands to investigate a bug
-    ✅ Orchestrator delegates "diagnose the bug in X" to grind
-
-    ❌ Orchestrator does web research
-    ✅ Orchestrator delegates web research to seeker
-
-    ❌ Orchestrator does inline code changes "because it's just one line"
-    ✅ Orchestrator delegates even trivial edits to maintain role separation
-
-    ## Progress tracking
-    - Use `todo` to track all subtasks (pending → in_progress → completed)
-    - Mark tasks in_progress when dispatching, completed when results verified
-    - If a subagent returns partial results, create follow-up tasks
+    Coordinate work through the installed `sub-agent-definitions` and `pi-subagents`
+    skills; load and follow those contracts before delegating. Do not hard-code agent,
+    provider, model, or thinking choices. Use `ask_user` for consequential ambiguity,
+    one focused question per call. Parent-side bounded inspection and verification are
+    allowed. Keep dependent mutations serial, use isolation for parallel writers,
+    verify child evidence, and synthesize results with explicit unverified scope.
 
 code:
   bash_policy: non_destructive
   enabled_tools: [] # All registered baseline tools, including ask_user.
-
   prompt_suffix: |
-    You are in CODE MODE — full editing and bash access, with destructive-command protection.
-    - All tools are available, including `ask_user`.
-    - Use `ask_user` for structured questions, clarifications, and option lists rather than plain prose; ask one focused question per call.
-    - Bash commands are filtered: destructive commands (rm -rf, git push, sudo, npm install, etc.) are blocked.
-    - Use bash for building, testing, running scripts, and read-only git operations.
-    - Use edit/write to modify code.
-  # CODE may perform syntactically relative creation, copying, moving, linking,
-  # and simple text output. These patterns reject absolute/path-option forms,
-  # parent traversal, shell substitution, and unrestricted command composition.
-  bash_patterns:
-    destructive:
-      add:
-        - '^mkdir(?: -p)? (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/ -]+$'
-        - '^touch (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/ -]+$'
-        - '^cp(?: -[Rrpaifn]{1,8})? (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/-]+ [\w.@%+=:,/ -]+$'
-        - '^mv(?: -[fin]{1,3})? (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/-]+ [\w.@%+=:,/ -]+$'
-        - '^ln(?: -[sfn]{1,3})? (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/-]+ [\w.@%+=:,/-]+$'
-        - '^(?:printf|echo) [^;&|`$<>\r\n]*>{1,2} *(?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/-]+$'
-        - '^(?:printf|echo) [^;&|`$<>\r\n]*\| *tee(?: -a)? (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/-]+$'
-      severity:
-        '^mkdir(?: -p)? (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/ -]+$': allow
-        '^touch (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/ -]+$': allow
-        '^cp(?: -[Rrpaifn]{1,8})? (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/-]+ [\w.@%+=:,/ -]+$': allow
-        '^mv(?: -[fin]{1,3})? (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/-]+ [\w.@%+=:,/ -]+$': allow
-        '^ln(?: -[sfn]{1,3})? (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/-]+ [\w.@%+=:,/-]+$': allow
-        '^(?:printf|echo) [^;&|`$<>\r\n]*>{1,2} *(?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/-]+$': allow
-        '^(?:printf|echo) [^;&|`$<>\r\n]*\| *tee(?: -a)? (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/-]+$': allow
+    Follow repository instructions and applicable skills. Inspect callers, tests,
+    and contracts before editing. Use `ask_user` for consequential ambiguity, one
+    focused question per call. Make the smallest complete change, run relevant
+    verification, and report executed checks, results, and anything not verified.
+
+yolo:
+  bash_policy: off
+  enabled_tools: [] # All registered baseline tools, including ask_user.
+  prompt_suffix: |
+    All registered tools are available, including `ask_user`, and the mode extension's
+    Bash filter is disabled. Repository authority, safety, secret-handling, Artifactory,
+    confirmation, and destructive-operation rules still apply. Implement the smallest
+    complete change and report executed verification and unverified scope.

@@ -23,9 +23,9 @@ from ucode.smart_routing.routing import RoutingDecision
 ROUTER_NAME = routing.ROUTER_NAME
 ROUTING_PATH = routing.ROUTING_PATH
 REQUEST_TIMEOUT_S = routing.REQUEST_TIMEOUT_S
-CODEX_ROUTE_ARMS = ("glm-5-2", "gpt-5-6-sol", "gpt-5-6-luna")
-GLM_ROUTE_ARM = "glm-5-2"
-GLM_GATEWAY_MODEL = "system.ai.glm-5-2"
+CODEX_ROUTE_ARMS = ("glm-5-3-flash", "gpt-5-6-sol", "gpt-5-6-luna")
+GLM_ROUTE_ARM = "glm-5-3-flash"
+GLM_GATEWAY_MODEL = "system.ai.glm-5-3-flash"
 SPAWN_AGENT_TOOL_SUFFIX = "spawn_agent"
 CANARY_PATH = APP_DIR / "codex-smart-routing-canary.json"
 AUDIT_PATH = APP_DIR / "codex-smart-routing-audit.jsonl"

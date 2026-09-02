@@ -36,14 +36,20 @@ displayed extension list or setting global project trust. Use explicit
 non-interactive runs. `lucode init --revert` removes unchanged values owned by
 initialization while preserving later user edits.
 
-Accepting extensions also installs lucode's Pi modes configuration. It reduces
-Bash approval prompts but is not a read-only security boundary: the 0.4.2
-extension evaluator uses unanchored regex matches and does not validate every
-stage of compound commands, so a safe fragment can authorize a command joined
-before or after it. Lucode removes the unrestricted Node heredoc exception.
-PLAN, ASK, ORCHESTRATOR, and CODE pin `ask_user` and name it in their copied
-mode prompts so structured questions use `pi-ask-user`. Re-check those copied
-prompts whenever `@neilurk12/pi-agent-modes` is upgraded.
+Accepting extensions runs Pi's package installer for
+`npm:@neilurk12/pi-agent-modes`, then replaces its five managed definitions
+before initialization succeeds. Divergent package files are always overwritten
+and retained under `LUCODE_HOME/modes-backups/installed-definitions/<version>`;
+rerunning init repairs an extension reinstall. Install, supported-version,
+synchronization, or byte-verification failures stop init. Package-local edits
+are recovery data, not authoritative configuration.
+
+The durable Pi modes YAML remains the policy layer. It reduces Bash approval
+prompts but is not a read-only security boundary: the 0.4.2 evaluator uses
+unanchored regex matches and does not validate every compound-command stage.
+Lucode removes the unrestricted Node heredoc exception. All five definitions
+name `ask_user`; review their frontmatter and YAML prompts before allowing a new
+`@neilurk12/pi-agent-modes` version.
 
 Rerunning `lucode init` refreshes an unchanged lucode-written modes config. It
 warns and preserves a locally edited or unrecognized file. To replace one, run

@@ -55,10 +55,26 @@ class TestPackagedDefaultsAreImportable:
                 # CODE's empty list intentionally means every registered baseline tool.
                 assert "enabled_tools: []" in tools, mode
             else:
-                assert re.search(r"^    - ask_user$", tools, re.MULTILINE), mode
+                assert "ask_user" in tools, mode
             suffix = remainder.lstrip()
             assert "ask_user" in suffix, mode
             assert not suffix.startswith("[MODE:"), mode
+
+    def test_mode_definitions_are_packaged_and_match_runtime_overrides(self):
+        defaults = resources.files("lucode.defaults")
+        config = (defaults / "pi-modes-config.yaml").read_text(encoding="utf-8")
+        for mode in ("plan", "ask", "code", "orchestrator", "yolo"):
+            definition = (defaults / "pi-agent-modes" / f"{mode}.md").read_text(encoding="utf-8")
+            assert definition.strip()
+            assert f"mode: {mode}" in definition
+            assert "prompt_suffix: |\n  [MODE:" not in definition
+            suffix = definition.split("prompt_suffix: |\n", 1)[1].split("\n---", 1)[0]
+            normalized_suffix = " ".join(suffix.split())
+            assert normalized_suffix in " ".join(config.split())
+            assert "ask_user" in definition
+        orchestrator = (defaults / "pi-agent-modes" / "orchestrator.md").read_text()
+        for obsolete in ("get_subagent_result", "steer_subagent", "blitz", "grind", "seeker"):
+            assert obsolete not in orchestrator
 
     def test_pi_parameters_is_non_empty_for_rendered_providers(self):
         for provider in pi.PROVIDER_NAMES:

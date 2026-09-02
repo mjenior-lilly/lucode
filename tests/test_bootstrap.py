@@ -14,6 +14,12 @@ def _patch_paths(tmp_path, monkeypatch):
         "modes_backup": tmp_path / "modes.backup.yaml",
         "force_dir": tmp_path / "modes-backups",
         "journal": tmp_path / "journal.json",
+        "package_root": tmp_path
+        / "agent"
+        / "npm"
+        / "node_modules"
+        / "@neilurk12"
+        / "pi-agent-modes",
     }
     monkeypatch.setattr(bootstrap, "PI_SETTINGS_PATH", paths["settings"])
     monkeypatch.setattr(bootstrap, "PI_SETTINGS_BACKUP_PATH", paths["settings_backup"])
@@ -21,7 +27,14 @@ def _patch_paths(tmp_path, monkeypatch):
     monkeypatch.setattr(bootstrap, "PI_MODES_CONFIG_BACKUP_PATH", paths["modes_backup"])
     monkeypatch.setattr(bootstrap, "PI_MODES_FORCE_BACKUP_DIR", paths["force_dir"])
     monkeypatch.setattr(bootstrap, "JOURNAL_PATH", paths["journal"])
+    monkeypatch.setattr(bootstrap, "PI_AGENT_MODES_ROOT", paths["package_root"])
     monkeypatch.setattr(bootstrap, "file_lock", lambda _name: nullcontext())
+    package_root = paths["package_root"]
+    (package_root / "modes").mkdir(parents=True)
+    (package_root / "package.json").write_text(
+        json.dumps({"name": "@neilurk12/pi-agent-modes", "version": "0.4.2"})
+    )
+    monkeypatch.setattr("lucode.agents.pi.install_agent_modes_extension", lambda: None)
     return paths
 
 

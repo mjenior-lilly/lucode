@@ -146,7 +146,7 @@ def _model_service(model_id: str) -> dict:
 
 class TestModelTokenLimits:
     def test_glm_is_capped(self):
-        assert db_mod.model_token_limits("system.ai.glm-5-2") == {
+        assert db_mod.model_token_limits("system.ai.glm-5-3-flash") == {
             "context": 200_000,
             "output": 25_000,
         }
@@ -173,7 +173,7 @@ class TestDiscoverModelServices:
                 _model_service("system.ai.gemini-2-5-flash"),
                 _model_service("system.ai.gemini-3-5-flash"),
                 _model_service("system.ai.kimi-k2-7-code"),
-                _model_service("system.ai.glm-5-2"),
+                _model_service("system.ai.glm-5-3-flash"),
                 _model_service("system.ai.llama-4-maverick"),
             ]
         }
@@ -193,13 +193,13 @@ class TestDiscoverModelServices:
         # Gemini ordered newest-first via the shared sort key.
         assert gemini[0] == "system.ai.gemini-3-5-flash"
         # kimi and glm are the allowlisted OSS families; llama is not.
-        assert oss == ["system.ai.glm-5-2", "system.ai.kimi-k2-7-code"]
+        assert oss == ["system.ai.glm-5-3-flash", "system.ai.kimi-k2-7-code"]
 
     def test_oss_allowlist_drops_unsupported_families(self, monkeypatch):
         # Only kimi/glm are allowlisted; other families are dropped.
         payload = {
             "model_services": [
-                _model_service("system.ai.glm-5-2"),
+                _model_service("system.ai.glm-5-3-flash"),
                 _model_service("system.ai.kimi-k2-7-code"),
                 _model_service("system.ai.qwen-3-coder"),
                 _model_service("system.ai.deepseek-v3"),
@@ -215,7 +215,7 @@ class TestDiscoverModelServices:
 
         assert reason is None
         assert (claude, codex, gemini) == ({}, [], [])
-        assert oss == ["system.ai.glm-5-2", "system.ai.kimi-k2-7-code"]
+        assert oss == ["system.ai.glm-5-3-flash", "system.ai.kimi-k2-7-code"]
 
     def test_paginates_via_next_page_token(self, monkeypatch):
         pages = {

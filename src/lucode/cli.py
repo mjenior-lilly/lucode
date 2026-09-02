@@ -226,7 +226,7 @@ def init_cmd(
         ),
     ] = False,
 ) -> None:
-    """Initialize Pi preferences and the extension-consented modes policy."""
+    """Initialize Pi preferences and install the extension-consented modes package."""
     from lucode.bootstrap import initialize
     from lucode.bootstrap import revert as revert_init
     from lucode.parameters import pi_settings_packages
@@ -243,12 +243,23 @@ def init_cmd(
         project_trust = prompt_yes_no_default(
             "Set Pi defaultProjectTrust to always for all projects?", default=False
         )
-    result = initialize(
-        extensions=extensions,
-        project_trust=project_trust,
-        force=force,
-        confirm=prompt_yes_no,
-    )
+    try:
+        result = initialize(
+            extensions=extensions,
+            project_trust=project_trust,
+            force=force,
+            confirm=prompt_yes_no,
+        )
+    except RuntimeError as exc:
+        print_err(str(exc))
+        raise typer.Exit(1) from None
+    if result.definitions_outcome:
+        detail = (
+            f"; {result.definitions_backup_count} displaced files backed up"
+            if result.definitions_backup_count
+            else ""
+        )
+        print_success(f"Pi mode definitions {result.definitions_outcome}{detail}")
     print_success(f"Initialization complete ({len(result.owned)} settings added)")
     if result.modes_outcome == "written":
         print_success("Pi modes configuration written")
@@ -256,8 +267,7 @@ def init_cmd(
         print_success("Pi modes configuration refreshed")
     elif result.modes_outcome == "forced":
         print_success(
-            f"Pi modes configuration replaced; previous content moved to "
-            f"{result.modes_backup_path}"
+            f"Pi modes configuration replaced; previous content moved to {result.modes_backup_path}"
         )
     elif result.modes_outcome in {"skipped_user_modified", "skipped_foreign"}:
         reason = (

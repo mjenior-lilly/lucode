@@ -58,7 +58,7 @@ def test_routes_with_task_v1_codex_menu(monkeypatch):
     assert captured["headers"]["Authorization"] == "Bearer token"
     assert captured["body"] == {
         "route_options": [
-            {"model": "glm-5-2", "harness": "codex"},
+            {"model": "glm-5-3-flash", "harness": "codex"},
             {"model": "gpt-5-6-sol", "harness": "codex"},
             {"model": "gpt-5-6-luna", "harness": "codex"},
         ],
@@ -78,11 +78,11 @@ def test_router_model_is_not_substituted_when_exact_model_is_unavailable():
 
 def test_glm_maps_to_databricks_gateway_model():
     model = codex_routing.resolve_routed_model(
-        "glm-5-2",
+        "glm-5-3-flash",
         ["system.ai.gpt-5-6-luna", "system.ai.gpt-5-6-sol"],
     )
 
-    assert model == "system.ai.glm-5-2"
+    assert model == "system.ai.glm-5-3-flash"
 
 
 def test_exact_router_model_is_preserved():
@@ -195,8 +195,8 @@ def test_spawn_glm_decision_applies_glm_model(monkeypatch):
         "request_routing_decision",
         lambda *args, **kwargs: (
             codex_routing.RoutingDecision(
-                model="system.ai.glm-5-2",
-                raw_model="glm-5-2",
+                model="system.ai.glm-5-3-flash",
+                raw_model="glm-5-3-flash",
             ),
             None,
         ),
@@ -212,8 +212,8 @@ def test_spawn_glm_decision_applies_glm_model(monkeypatch):
         available_models=["system.ai.gpt-5-6-luna", "system.ai.gpt-5-6-sol"],
     )
 
-    assert output["hookSpecificOutput"]["updatedInput"]["model"] == "system.ai.glm-5-2"
-    assert "Using Smart Routing. Routing to system.ai.glm-5-2." in output["systemMessage"]
+    assert output["hookSpecificOutput"]["updatedInput"]["model"] == "system.ai.glm-5-3-flash"
+    assert "Using Smart Routing. Routing to system.ai.glm-5-3-flash." in output["systemMessage"]
 
 
 def test_non_spawn_tool_has_no_opinion():

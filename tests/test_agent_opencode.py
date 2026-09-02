@@ -122,9 +122,9 @@ class TestRenderOverlay:
         assert options["baseURL"] == f"{WS}/ai-gateway/mlflow/v1"
 
     def test_glm_gets_token_limits(self):
-        models = {"oss": ["system.ai.glm-5-2"]}
-        overlay, _ = opencode.render_overlay("system.ai.glm-5-2", "tok", _base_urls(), models)
-        glm = overlay["provider"]["databricks-oss"]["models"]["system.ai.glm-5-2"]
+        models = {"oss": ["system.ai.glm-5-3-flash"]}
+        overlay, _ = opencode.render_overlay("system.ai.glm-5-3-flash", "tok", _base_urls(), models)
+        glm = overlay["provider"]["databricks-oss"]["models"]["system.ai.glm-5-3-flash"]
         # OpenCode's schema requires both context and output on `limit`.
         assert glm["limit"] == {"context": 200000, "output": 25000}
 
@@ -240,7 +240,7 @@ class TestRenderOverlay:
                 },
                 "databricks-google": {"models": {"user-gemini": {"custom": "keep"}}},
                 "databricks-oss": {
-                    "models": {"system.ai.glm-5-2": {"limit": {"context": 1, "output": 1}}}
+                    "models": {"system.ai.glm-5-3-flash": {"limit": {"context": 1, "output": 1}}}
                 },
             }
         }
@@ -268,7 +268,7 @@ class TestRenderOverlay:
         # A user-set limit is custom metadata and wins. model_token_limits
         # matches by family substring (any *glm*), so letting it overwrite this
         # would silently discard a deliberate per-model cap.
-        glm = providers["databricks-oss"]["models"]["system.ai.glm-5-2"]
+        glm = providers["databricks-oss"]["models"]["system.ai.glm-5-3-flash"]
         assert glm["limit"] == {"context": 1, "output": 1}
 
     def test_existing_empty_model_map_is_authoritative(self):

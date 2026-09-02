@@ -63,9 +63,7 @@ def classify_model_family(model_id: str) -> str | None:
 # context and output together. Keyed by family substring; add an entry to bound
 # a new model.
 _MODEL_TOKEN_LIMITS: dict[str, dict[str, int]] = {
-    # GLM-4.6: 200k context, but the gateway caps output well below the model's
-    # native 128k — pin 25k so requests aren't rejected.
-    "glm": {"context": 200_000, "output": 25_000},
+    "glm": {"context": 1_000_000, "output": 128_000},
 }
 
 

@@ -48,6 +48,7 @@ import threading
 from lucode.agents.models import layer_model_entries, pi_default_model, resolve_model_ids
 from lucode.agents.updates import available_npm_package_update
 from lucode.config import (
+    AGENT_PACKAGE_INSTALL_TIMEOUT_SECONDS,
     APP_DIR,
     NPM_REGISTRY,
     TOKEN_REFRESH_INTERVAL_SECONDS,
@@ -80,6 +81,10 @@ PI_BACKUP_PATH = APP_DIR / "pi-models.backup.json"
 PI_SETTINGS_BACKUP_PATH = APP_DIR / "pi-settings.backup.json"
 PI_MODES_CONFIG_BACKUP_PATH = APP_DIR / "pi-modes-config.backup.yaml"
 PI_MODES_FORCE_BACKUP_DIR = APP_DIR / "modes-backups"
+PI_AGENT_MODES_PACKAGE = "@neilurk12/pi-agent-modes"
+PI_AGENT_MODES_VERSION = "0.4.2"
+PI_AGENT_MODES_SOURCE = f"npm:{PI_AGENT_MODES_PACKAGE}@{PI_AGENT_MODES_VERSION}"
+PI_AGENT_MODES_ROOT = PI_CONFIG_DIR / "npm" / "node_modules" / "@neilurk12" / "pi-agent-modes"
 
 SPEC: ToolSpec = {
     "binary": "pi",
@@ -460,15 +465,38 @@ def _refresh_forever(state: dict, stop_event: threading.Event) -> None:
                 refresh_failing = True
 
 
-def build_runtime_env(token: str) -> dict[str, str]:
+def build_runtime_env(token: str | None = None) -> dict[str, str]:
+    """Build Pi's isolated environment; package installation does not need a token."""
     env = os.environ.copy()
-    env["OAUTH_TOKEN"] = token
+    if token is not None:
+        env["OAUTH_TOKEN"] = token
+    else:
+        env.pop("OAUTH_TOKEN", None)
     # Pi gives PI_CODING_AGENT_DIR precedence over HOME when locating models.json,
     # so pin both to prevent an inherited agent directory from bypassing lucode's config.
     env["HOME"] = str(PI_lucode_HOME)
     env["PI_CODING_AGENT_DIR"] = str(PI_CONFIG_DIR)
     env["NPM_CONFIG_REGISTRY"] = NPM_REGISTRY
     return env
+
+
+def install_agent_modes_extension() -> None:
+    """Install the required modes package through Pi's supported package interface."""
+    try:
+        result = subprocess.run(
+            [SPEC["binary"], "install", PI_AGENT_MODES_SOURCE],
+            env=build_runtime_env(),
+            capture_output=True,
+            text=True,
+            timeout=AGENT_PACKAGE_INSTALL_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise RuntimeError(f"Failed to install {PI_AGENT_MODES_SOURCE}") from exc
+    if result.returncode:
+        detail = (result.stderr or result.stdout).strip()[-1000:]
+        suffix = f": {detail}" if detail else ""
+        raise RuntimeError(f"Failed to install {PI_AGENT_MODES_SOURCE}{suffix}")
 
 
 def launch(state: dict, tool_args: list[str]) -> None:
