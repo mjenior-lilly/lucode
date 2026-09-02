@@ -26,6 +26,53 @@ runner = CliRunner()
 TOOLS = ["opencode", "pi"]
 
 
+@pytest.mark.parametrize(
+    ("outcome", "expected"),
+    [
+        ("written", "Pi modes configuration written"),
+        ("refreshed", "Pi modes configuration refreshed"),
+        ("skipped_user_modified", "--force"),
+        ("skipped_foreign", "--force"),
+        ("force_declined", "overwrite was declined"),
+    ],
+)
+def test_init_reports_modes_outcome(outcome, expected, tmp_path):
+    from lucode.bootstrap import InitializeResult
+
+    with patch(
+        "lucode.bootstrap.initialize", return_value=InitializeResult({}, outcome)
+    ) as initialize:
+        result = runner.invoke(
+            app, ["init", "--extensions", "--no-project-trust"]
+        )
+    assert result.exit_code == 0, result.output
+    assert expected in _strip_ansi(result.output)
+    assert initialize.call_args.kwargs["force"] is False
+    assert callable(initialize.call_args.kwargs["confirm"])
+
+
+def test_init_force_reports_backup_and_wires_strict_prompt(tmp_path):
+    from lucode.bootstrap import InitializeResult
+
+    backup = tmp_path / "config.yaml"
+    with (
+        patch(
+            "lucode.bootstrap.initialize",
+            return_value=InitializeResult({}, "forced", backup),
+        ) as initialize,
+        patch("lucode.cli.prompt_yes_no", return_value=True) as prompt,
+    ):
+        result = runner.invoke(
+            app, ["init", "--extensions", "--no-project-trust", "--force"]
+        )
+        callback = initialize.call_args.kwargs["confirm"]
+        assert callback("Overwrite exact path and move it to a backup?") is True
+    assert result.exit_code == 0, result.output
+    assert backup.name in _strip_ansi(result.output)
+    assert initialize.call_args.kwargs["force"] is True
+    prompt.assert_called_once_with("Overwrite exact path and move it to a backup?")
+
+
 @pytest.fixture(autouse=True)
 def no_state_writes():
     """Prevent any test from writing to the real state file on disk."""

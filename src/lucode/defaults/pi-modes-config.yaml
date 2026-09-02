@@ -1,3 +1,8 @@
+# Installed at PI_lucode_HOME/.pi/modes/config.yaml because Pi sessions pin HOME there.
+# Tool lists deliberately pin ask_user: enabled_tools blocks every unlisted tool.
+# This policy reduces prompts; it is not a security boundary because the 0.4.2
+# evaluator does not validate every stage of compound commands. Severity keys must
+# exactly mirror destructive.add entries; matching is case-insensitive and runs first.
 # Shared command families that supplement the extension's built-in safelist
 # (cat, grep, find, rg, fd, bat, eza, jq, and standard inspection commands).
 # The uv and language-execution additions are fully anchored. The evaluator
@@ -28,7 +33,6 @@ bash_patterns:
       - '^(?:(?:\.venv|venv)/bin/)?python3?[ \t]+-m[ \t]+pip[ \t]+(?:list|freeze|check)$'
       - '^(?:(?:\.venv|venv)/bin/)?python3?[ \t]+-m[ \t]+pip[ \t]+show[ \t]+[\w.-]+$'
       - '^uv[ \t]+(?:-V|--version)[ \t]+&&[ \t]+uv[ \t]+sync\b(?=[^;&|`$<>\r\n]*--(?:dry-run|check)\b)[^;&|`$<>\r\n]*$'
-      - '^node(?:[ \t]+--input-type=(?:module|commonjs))?[ \t]+<<["\x27]?([A-Za-z_]\w*)["\x27]?\r?\n[\s\S]*\r?\n\1[ \t]*$'
       - '^node[ \t]+--check[ \t]+(?!/)(?![^\r\n]*\.\.)[\w.@%+=:,/ -]+$'
       - '^(?:pytest|(?:(?:\.venv|venv)/bin/)?python3?[ \t]+-m[ \t]+pytest|(?:\.venv|venv)/bin/pytest)\b[^;&|`$<>\r\n]*$'
       - '^node[ \t]+--test\b[^;&|`$<>\r\n]*$'
@@ -104,6 +108,16 @@ plan:
     - ask_user_question
     - ask_user
 
+  # Copied from @neilurk12/pi-agent-modes 0.4.2; re-check on extension upgrades.
+  prompt_suffix: |
+    You are in PLAN MODE — read-only exploration for safe analysis.
+    - Enabled tools: read, bash, grep, find, ls, questionnaire, ask_user_question, ask_user.
+    - Disabled tools: edit, write, apply_patch.
+    - Bash commands are shell-filtered; destructive commands (rm, git push, npm install, etc.) are blocked.
+    - Use `ask_user` for structured questions, clarifications, and option lists rather than plain prose; ask one focused question per call.
+    - Focus on exploration and planning.
+    - When asked for a plan, provide a numbered list under "Plan:".
+
 ask:
   bash_policy: strict_readonly
   enabled_tools:
@@ -116,6 +130,17 @@ ask:
     - ask_user_question
     - ask_users
     - ask_user
+
+  prompt_suffix: |
+    You are in ASK MODE — a clarification-first mode for requirement gathering.
+    - Enabled tools: read, bash, grep, find, ls, questionnaire, ask_user_question, ask_users, ask_user.
+    - Disabled tools: edit, write, apply_patch.
+    - Bash commands are shell-filtered; destructive commands (rm, git push, npm install, etc.) are blocked.
+    - Your ONLY job is to ask structured questions with `ask_user` to clarify the user's request; prefer it over plain prose and ask one focused question per call.
+    - Gather full requirements, constraints, and context before any implementation.
+    - Present a numbered list of requirements or acceptance criteria once gathered.
+    - If the user already provides a clear spec, confirm understanding by summarizing back.
+    - DO NOT make any file changes. DO NOT attempt implementation.
 
 orchestrator:
   bash_policy: strict_readonly
@@ -135,9 +160,81 @@ orchestrator:
     - ask_user
     - request_mode_switch
 
+  prompt_suffix: |
+    You are in orchestrator mode. Your role is to coordinate, not to execute.
+
+    - Enabled tools: Agent, bash, subagent, get_subagent_result, steer_subagent, todo, read, grep, find, ls, questionnaire, ask_user_question, ask_user, request_mode_switch.
+    - Use `ask_user` for structured questions, clarifications, and option lists rather than plain prose; ask one focused question per call.
+
+    ## Core workflow
+    1. Break the user's request into independent subtasks
+    2. For each subtask, use the `Agent` tool to delegate
+    3. Collect results and synthesize into final answer
+    4. Track progress with `todo`; if a subagent fails, retry or re-plan
+
+    ## Delegate early and often — concrete thresholds
+    - Any task requiring >2 file reads → delegate to blitz (fast codebase recon)
+    - Any task requiring code changes → delegate to grind (general-purpose code agent)
+    - Any web research task → delegate to seeker (web research agent)
+    - Multi-step research across 3+ files → delegate immediately
+
+    ## What the orchestrator NEVER does inline
+    - NEVER read source files to understand code — delegate to blitz
+    - NEVER grep the codebase yourself — delegate to blitz
+    - NEVER edit or write code yourself — delegate to grind
+    - NEVER run bash commands for investigation — delegate to grind
+    - NEVER do multi-step debugging yourself — delegate each investigation step
+    - NEVER do web research yourself — delegate to seeker
+    - The orchestrator reads ONLY: subagent results, plan documents, config files, user messages
+
+    ## When inline IS acceptable (rare)
+    - Reading a single known file path the user just mentioned
+    - Running a single test command to verify subagent output
+    - Creating a todo list to track progress
+    - Reading your own configuration or mode files
+    - Synthesizing and summarizing subagent results for the user
+
+    ## Available agents
+    | Agent | Use for |
+    |-------|----------|
+    | blitz | Fast codebase recon — explores files, finds patterns, maps architecture |
+    | grind | General-purpose code agent — reads, writes, edits code, runs tests |
+    | seeker | Web research — searches the web and synthesizes findings |
+
+    ## Parallel dispatch
+    - When 2+ subtasks are independent (no shared files, no shared state), dispatch them in parallel using `run_in_background: true`
+    - Use `get_subagent_result` to collect results
+    - Never dispatch agents that would edit the same files in parallel — use `isolation: "worktree"` or run sequentially
+
+    ## Anti-patterns (what this mode fixes)
+    ❌ Orchestrator reads 5 source files, greps for patterns, then edits code
+    ✅ Orchestrator delegates "find X and fix Y" to grind, reviews result
+
+    ❌ Orchestrator runs bash commands to investigate a bug
+    ✅ Orchestrator delegates "diagnose the bug in X" to grind
+
+    ❌ Orchestrator does web research
+    ✅ Orchestrator delegates web research to seeker
+
+    ❌ Orchestrator does inline code changes "because it's just one line"
+    ✅ Orchestrator delegates even trivial edits to maintain role separation
+
+    ## Progress tracking
+    - Use `todo` to track all subtasks (pending → in_progress → completed)
+    - Mark tasks in_progress when dispatching, completed when results verified
+    - If a subagent returns partial results, create follow-up tasks
+
 code:
   bash_policy: non_destructive
   enabled_tools: [] # All registered baseline tools, including ask_user.
+
+  prompt_suffix: |
+    You are in CODE MODE — full editing and bash access, with destructive-command protection.
+    - All tools are available, including `ask_user`.
+    - Use `ask_user` for structured questions, clarifications, and option lists rather than plain prose; ask one focused question per call.
+    - Bash commands are filtered: destructive commands (rm -rf, git push, sudo, npm install, etc.) are blocked.
+    - Use bash for building, testing, running scripts, and read-only git operations.
+    - Use edit/write to modify code.
   # CODE may perform syntactically relative creation, copying, moving, linking,
   # and simple text output. These patterns reject absolute/path-option forms,
   # parent traversal, shell substitution, and unrestricted command composition.

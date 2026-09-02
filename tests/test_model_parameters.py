@@ -8,6 +8,7 @@ credential or stale endpoint leaks out of it into a live config.
 from __future__ import annotations
 
 import json
+import re
 from importlib import resources
 
 import lucode.agents.opencode as opencode
@@ -31,6 +32,33 @@ class TestPackagedDefaultsAreImportable:
         for name in ("pi-models.json", "opencode-models.json", "pi-settings.json"):
             text = (resources.files("lucode.defaults") / name).read_text(encoding="utf-8")
             assert isinstance(json.loads(text), dict), name
+
+    def test_modes_config_is_packaged_and_sanitized(self):
+        text = (resources.files("lucode.defaults") / "pi-modes-config.yaml").read_text(
+            encoding="utf-8"
+        )
+        assert text.strip()
+        assert "^node(?:[ \\t]+--input-type=" not in text
+
+    def test_restricted_modes_pin_and_advertise_ask_user(self):
+        text = (resources.files("lucode.defaults") / "pi-modes-config.yaml").read_text(
+            encoding="utf-8"
+        )
+        for index, mode in enumerate(("plan", "ask", "orchestrator", "code")):
+            next_modes = ("ask", "orchestrator", "code")
+            end = rf"(?=^(?:{'|'.join(next_modes[index:])}):|\Z)" if index < 3 else r"\Z"
+            match = re.search(rf"^{mode}:\n(?P<body>.*?){end}", text, re.MULTILINE | re.DOTALL)
+            assert match, mode
+            body = match.group("body")
+            tools, remainder = body.split("prompt_suffix: |", 1)
+            if mode == "code":
+                # CODE's empty list intentionally means every registered baseline tool.
+                assert "enabled_tools: []" in tools, mode
+            else:
+                assert re.search(r"^    - ask_user$", tools, re.MULTILINE), mode
+            suffix = remainder.lstrip()
+            assert "ask_user" in suffix, mode
+            assert not suffix.startswith("[MODE:"), mode
 
     def test_pi_parameters_is_non_empty_for_rendered_providers(self):
         for provider in pi.PROVIDER_NAMES:

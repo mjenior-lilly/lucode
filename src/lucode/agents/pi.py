@@ -73,8 +73,13 @@ PI_lucode_HOME = APP_DIR / "pi-home"
 PI_CONFIG_DIR = PI_lucode_HOME / ".pi" / "agent"
 PI_CONFIG_PATH = PI_CONFIG_DIR / "models.json"
 PI_SETTINGS_PATH = PI_CONFIG_DIR / "settings.json"
+# pi-agent-modes resolves this path from HOME; build_runtime_env pins HOME to
+# PI_lucode_HOME, so initialization must not derive it from the ambient shell.
+PI_MODES_CONFIG_PATH = PI_lucode_HOME / ".pi" / "modes" / "config.yaml"
 PI_BACKUP_PATH = APP_DIR / "pi-models.backup.json"
 PI_SETTINGS_BACKUP_PATH = APP_DIR / "pi-settings.backup.json"
+PI_MODES_CONFIG_BACKUP_PATH = APP_DIR / "pi-modes-config.backup.yaml"
+PI_MODES_FORCE_BACKUP_DIR = APP_DIR / "modes-backups"
 
 SPEC: ToolSpec = {
     "binary": "pi",

@@ -12,7 +12,11 @@ from rich.panel import Panel
 
 from lucode.agents.configuration import configure_single_tool, ensure_provider_state
 from lucode.agents.install import ensure_bootstrap_dependencies
-from lucode.agents.pi import PI_SETTINGS_BACKUP_PATH, PI_SETTINGS_PATH
+from lucode.agents.pi import (
+    PI_MODES_CONFIG_PATH,
+    PI_SETTINGS_BACKUP_PATH,
+    PI_SETTINGS_PATH,
+)
 from lucode.agents.registry import (
     TOOL_SPECS,
     configure_tool,
@@ -58,6 +62,7 @@ from lucode.ui import (
     print_section,
     print_success,
     print_warning,
+    prompt_yes_no,
     prompt_yes_no_default,
     set_verbosity,
     spinner,
@@ -213,8 +218,15 @@ def init_cmd(
         bool | None, typer.Option("--project-trust/--no-project-trust")
     ] = None,
     revert: Annotated[bool, typer.Option("--revert")] = False,
+    force: Annotated[
+        bool,
+        typer.Option(
+            "--force",
+            help="Overwrite a user-edited or unrecognized Pi modes config after confirmation.",
+        ),
+    ] = False,
 ) -> None:
-    """Initialize append-only Pi preferences with explicit security consent."""
+    """Initialize Pi preferences and the extension-consented modes policy."""
     from lucode.bootstrap import initialize
     from lucode.bootstrap import revert as revert_init
     from lucode.parameters import pi_settings_packages
@@ -231,8 +243,34 @@ def init_cmd(
         project_trust = prompt_yes_no_default(
             "Set Pi defaultProjectTrust to always for all projects?", default=False
         )
-    owned = initialize(extensions=extensions, project_trust=project_trust)
-    print_success(f"Initialization complete ({len(owned)} settings added)")
+    result = initialize(
+        extensions=extensions,
+        project_trust=project_trust,
+        force=force,
+        confirm=prompt_yes_no,
+    )
+    print_success(f"Initialization complete ({len(result.owned)} settings added)")
+    if result.modes_outcome == "written":
+        print_success("Pi modes configuration written")
+    elif result.modes_outcome == "refreshed":
+        print_success("Pi modes configuration refreshed")
+    elif result.modes_outcome == "forced":
+        print_success(
+            f"Pi modes configuration replaced; previous content moved to "
+            f"{result.modes_backup_path}"
+        )
+    elif result.modes_outcome in {"skipped_user_modified", "skipped_foreign"}:
+        reason = (
+            "has local edits"
+            if result.modes_outcome == "skipped_user_modified"
+            else "was not written by lucode"
+        )
+        print_warning(
+            f"Skipped {PI_MODES_CONFIG_PATH}: it {reason}. "
+            "Run `lucode init --force` to replace it after confirmation."
+        )
+    elif result.modes_outcome == "force_declined":
+        print_warning(f"Left {PI_MODES_CONFIG_PATH} unchanged; overwrite was declined")
 
 
 @prompts_app.command("status")

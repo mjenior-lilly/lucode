@@ -4,6 +4,8 @@
 It discovers supported models in your workspace and writes each agent's native
 configuration.
 
+Disclaimer: This platform was optimized primarily for Pi, treat any OpenCode use as beta testing.
+
 ## Requirements
 
 - Python 3.12+ and `uv` for installation
@@ -33,6 +35,21 @@ displayed extension list or setting global project trust. Use explicit
 `--extensions/--no-extensions` and `--project-trust/--no-project-trust` flags in
 non-interactive runs. `lucode init --revert` removes unchanged values owned by
 initialization while preserving later user edits.
+
+Accepting extensions also installs lucode's Pi modes configuration. It reduces
+Bash approval prompts but is not a read-only security boundary: the 0.4.2
+extension evaluator uses unanchored regex matches and does not validate every
+stage of compound commands, so a safe fragment can authorize a command joined
+before or after it. Lucode removes the unrestricted Node heredoc exception.
+PLAN, ASK, ORCHESTRATOR, and CODE pin `ask_user` and name it in their copied
+mode prompts so structured questions use `pi-ask-user`. Re-check those copied
+prompts whenever `@neilurk12/pi-agent-modes` is upgraded.
+
+Rerunning `lucode init` refreshes an unchanged lucode-written modes config. It
+warns and preserves a locally edited or unrecognized file. To replace one, run
+interactive `lucode init --force`; after explicit confirmation, the displaced
+file is kept in a numbered backup under `LUCODE_HOME/modes-backups`. An
+unattended force run cannot approve the overwrite.
 
 `LUCODE_HOME` selects the complete lucode state tree and defaults to
 `~/.lucode`; it must be absolute or start with `~`. `PROMPTS_REPO` and
