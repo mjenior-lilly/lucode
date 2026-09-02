@@ -32,10 +32,20 @@ def no_state_writes():
     with (
         patch("lucode.state.save_state"),
         patch("lucode.cli.save_state"),
-        patch("lucode.agents.__init__.save_state"),
+        patch("lucode.agents.configuration.save_state"),
         patch("lucode.agents.opencode.save_state"),
     ):
         yield
+
+
+@pytest.fixture(autouse=True)
+def reset_dry_run():
+    """Isolate the process-global dry-run flag between CliRunner invocations."""
+    from lucode.config import set_dry_run
+
+    set_dry_run(False)
+    yield
+    set_dry_run(False)
 
 
 @pytest.fixture(autouse=True)
@@ -369,9 +379,9 @@ class TestConfigureMcpFlag:
     def test_mcp_with_agents_configures_then_registers_services(self):
         with (
             patch("lucode.cli.install_databricks_cli"),
-            patch("lucode.cli.install_tool_binary"),
-            patch("lucode.cli.configure_workspace_command") as mock_cfg,
-            patch("lucode.cli.configure_mcp_command") as mock_mcp,
+            patch("lucode.configuration.install_tool_binary"),
+            patch("lucode.configuration.configure_workspace_command") as mock_cfg,
+            patch("lucode.configuration.configure_mcp_command") as mock_mcp,
         ):
             result = runner.invoke(
                 app,
@@ -389,9 +399,9 @@ class TestConfigureMcpFlag:
         # never the interactive agent picker, then register the MCP service.
         with (
             patch("lucode.cli.install_databricks_cli"),
-            patch("lucode.cli.configure_workspace_command") as mock_cfg,
-            patch("lucode.cli._configure_shared_workspace_states") as mock_shared,
-            patch("lucode.cli.configure_mcp_command") as mock_mcp,
+            patch("lucode.configuration.configure_workspace_command") as mock_cfg,
+            patch("lucode.configuration._configure_shared_workspace_states") as mock_shared,
+            patch("lucode.configuration.configure_mcp_command") as mock_mcp,
         ):
             result = runner.invoke(
                 app,
@@ -416,9 +426,9 @@ class TestConfigureMcpFlag:
     def test_mcp_rejects_bare_short_name(self):
         with (
             patch("lucode.cli.install_databricks_cli"),
-            patch("lucode.cli.configure_workspace_command"),
-            patch("lucode.cli._configure_shared_workspace_states"),
-            patch("lucode.cli.configure_mcp_command") as mock_mcp,
+            patch("lucode.configuration.configure_workspace_command"),
+            patch("lucode.configuration._configure_shared_workspace_states"),
+            patch("lucode.configuration.configure_mcp_command") as mock_mcp,
         ):
             result = runner.invoke(
                 app, ["configure", "--workspaces", "https://ws.databricks.com", "--mcp", "slack"]
@@ -429,7 +439,7 @@ class TestConfigureMcpFlag:
 
 class TestConfigureAgentsSelection:
     def test_selected_tools_skip_picker(self, monkeypatch):
-        import lucode.cli as cli_mod
+        import lucode.configuration as cli_mod
 
         state = {**MINIMAL_STATE, "available_tools": []}
         monkeypatch.setattr(
@@ -467,7 +477,7 @@ class TestConfigureAgentsSelection:
         assert configured == [["opencode", "pi"]]
 
     def test_unavailable_selected_tool_errors_before_configure(self, monkeypatch):
-        import lucode.cli as cli_mod
+        import lucode.configuration as cli_mod
 
         state = {**MINIMAL_STATE, "available_tools": []}
         monkeypatch.setattr(
@@ -490,7 +500,7 @@ class TestConfigureAgentsSelection:
             cli_mod.configure_workspace_command(selected_tools=["opencode", "pi"])
 
     def test_multiple_workspaces_configure_all_and_use_first(self, monkeypatch):
-        import lucode.cli as cli_mod
+        import lucode.configuration as cli_mod
 
         states = {
             "https://first.com": {**MINIMAL_STATE, "workspace": "https://first.com"},
@@ -517,6 +527,7 @@ class TestConfigureAgentsSelection:
         monkeypatch.setattr(cli_mod, "save_state", lambda state: saved.append(state["workspace"]))
         monkeypatch.setattr(cli_mod, "check_gateway_endpoint", lambda state, tool: True)
         monkeypatch.setattr(cli_mod, "prompt_for_tools", lambda available: ["opencode"])
+        monkeypatch.setattr(cli_mod, "prompt_yes_no_default", lambda *a, **k: True)
         monkeypatch.setattr(cli_mod, "install_tool_binary", lambda *args, **kwargs: True)
         monkeypatch.setattr(
             cli_mod,
@@ -545,7 +556,7 @@ class TestConfigureAgentsSelection:
 class TestParseProfilesOption:
     @staticmethod
     def _patch_profiles(monkeypatch, entries):
-        import lucode.cli as cli_mod
+        import lucode.configuration as cli_mod
 
         monkeypatch.setattr(cli_mod, "list_profile_entries", lambda: entries)
         return cli_mod
@@ -592,7 +603,7 @@ class TestConfigureSharedStateMcpCleanup:
 
     @staticmethod
     def _stub_external_deps(monkeypatch):
-        import lucode.cli as cli_mod
+        import lucode.configuration as cli_mod
 
         monkeypatch.setattr(cli_mod, "normalize_workspace_url", lambda w: w)
         monkeypatch.setattr(cli_mod, "run_databricks_login", lambda w, p: None)
@@ -607,7 +618,7 @@ class TestConfigureSharedStateMcpCleanup:
         monkeypatch.setattr(cli_mod, "build_shared_base_urls", lambda w: {})
 
     def test_purges_residue_when_workspace_changes(self, monkeypatch):
-        import lucode.cli as cli_mod
+        import lucode.configuration as cli_mod
 
         self._stub_external_deps(monkeypatch)
         monkeypatch.setattr(
@@ -627,7 +638,7 @@ class TestConfigureSharedStateMcpCleanup:
         assert called_workspace == "https://new.databricks.com"
 
     def test_skips_purge_when_workspace_unchanged(self, monkeypatch):
-        import lucode.cli as cli_mod
+        import lucode.configuration as cli_mod
 
         self._stub_external_deps(monkeypatch)
         monkeypatch.setattr(
@@ -654,7 +665,7 @@ class TestConfigureSharedStateSkipPreflight:
 
     @staticmethod
     def _stub(monkeypatch):
-        import lucode.cli as cli_mod
+        import lucode.configuration as cli_mod
 
         def _boom(name):
             def _f(*a, **k):
@@ -776,3 +787,80 @@ class TestShortcutEntrypoints:
 
         assert updates == [True]
         assert calls == [("lpi", ["pi", "--model", "provider/model"])]
+
+
+class TestLaunchOptionPositions:
+    @pytest.mark.parametrize(
+        "args, expected",
+        [
+            (["--workspace", "https://global", "pi"], ("https://global", False, False)),
+            (["pi", "--workspace", "https://local"], ("https://local", False, False)),
+            (["--skip-preflight", "pi"], (None, True, False)),
+            (["pi", "--skip-preflight"], (None, True, False)),
+            (["--dry-run", "pi"], (None, False, True)),
+            (["pi", "--dry-run"], (None, False, True)),
+        ],
+    )
+    def test_options_work_before_and_after_subcommand(self, args, expected):
+        captured = {}
+
+        def fake_launch(tool, ctx, skip_preflight=False, workspace=None):
+            from lucode.config import is_dry_run
+
+            captured.update(
+                tool=tool,
+                workspace=workspace,
+                skip_preflight=skip_preflight,
+                dry_run=is_dry_run(),
+            )
+
+        with patch("lucode.cli._launch_tool", side_effect=fake_launch):
+            result = runner.invoke(app, args)
+        assert result.exit_code == 0, result.output
+        assert captured == {
+            "tool": "pi",
+            "workspace": expected[0],
+            "skip_preflight": expected[1],
+            "dry_run": expected[2],
+        }
+
+    def test_subcommand_workspace_wins_and_booleans_combine(self):
+        with patch("lucode.cli._launch_tool") as launch:
+            result = runner.invoke(
+                app,
+                [
+                    "--workspace",
+                    "https://global",
+                    "--skip-preflight",
+                    "pi",
+                    "--workspace",
+                    "https://local",
+                    "--dry-run",
+                ],
+            )
+        assert result.exit_code == 0, result.output
+        launch.assert_called_once()
+        assert launch.call_args.kwargs == {
+            "skip_preflight": True,
+            "workspace": "https://local",
+        }
+
+    @pytest.mark.parametrize(
+        ("entry", "subcommand"), [("loc_main", "opencode"), ("lpi_main", "pi")]
+    )
+    def test_shims_place_user_launch_options_after_subcommand(self, entry, subcommand, monkeypatch):
+        import lucode.cli as cli_mod
+
+        captured = {}
+        monkeypatch.setattr(
+            cli_mod.sys, "argv", [entry, "--workspace", "https://shim", "--dry-run"]
+        )
+        if entry == "lpi_main":
+            monkeypatch.setattr("lucode.prompts.update", lambda: {"last_result": "ok"})
+        monkeypatch.setattr(
+            cli_mod,
+            "app",
+            lambda **kwargs: captured.update(argv=list(cli_mod.sys.argv), kwargs=kwargs),
+        )
+        getattr(cli_mod, entry)()
+        assert captured["argv"][1:] == [subcommand, "--workspace", "https://shim", "--dry-run"]

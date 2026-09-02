@@ -271,7 +271,7 @@ def list_profile_entries() -> list[dict]:
     `databricks auth profiles`.
 
     Returns ``[]`` on any failure (CLI missing, timeout, non-zero exit, JSON
-    decode error). When ``lucode_DEBUG=1`` each dropout path logs *why* the
+    decode error). When ``LUCODE_DEBUG=1`` each dropout path logs *why* the
     result was empty so a silently-disappearing workspace picker is
     diagnosable from ``~/.lucode/debug.log``.
     """

@@ -2,11 +2,39 @@
 
 from contextlib import nullcontext
 
+import pytest
+
 import lucode.mcp.commands as commands
 
 WS = "https://example.databricks.com"
 GH_URL = f"{WS}/api/2.0/mcp/external/github"
 PROXY_TAIL = ["mcp-proxy", "--url", GH_URL, "--host", WS, "--profile", "p"]
+
+
+class TestCommandModes:
+    def test_full_service_names_derive_a_single_location(self):
+        assert (
+            commands._location_from_services(
+                None,
+                {"system.ai.github", "system.ai.slack"},
+            )
+            == "system.ai"
+        )
+
+    @pytest.mark.parametrize(
+        ("services", "message"),
+        [
+            ({"github"}, "short names need --location"),
+            ({"system.ai.github", "other.schema.service"}, "must all share one"),
+            (set(), "got: none"),
+        ],
+    )
+    def test_invalid_standalone_services_are_rejected(self, services, message):
+        with pytest.raises(RuntimeError, match=message):
+            commands._location_from_services(None, services)
+
+    def test_explicit_location_accepts_short_names(self):
+        assert commands._location_from_services("main.default", {"github"}) == "main.default"
 
 
 class TestMcpServiceEntryNames:

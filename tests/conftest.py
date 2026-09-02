@@ -37,7 +37,7 @@ def _isolate_lucode_state(tmp_path, monkeypatch):
 
 
 def _workspace() -> str:
-    ws = os.environ.get("lucode_TEST_WORKSPACE", "").strip().rstrip("/")
+    ws = os.environ.get("LUCODE_TEST_WORKSPACE", "").strip().rstrip("/")
     return normalize_workspace_url(ws) if ws else ""
 
 
@@ -45,7 +45,7 @@ def _workspace() -> str:
 def e2e_workspace():
     ws = _workspace()
     if not ws:
-        pytest.skip("Set lucode_TEST_WORKSPACE=https://... to run E2E tests")
+        pytest.skip("Set LUCODE_TEST_WORKSPACE=https://... to run E2E tests")
     return ws
 
 

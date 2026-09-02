@@ -44,13 +44,11 @@ import os
 import signal
 import subprocess
 import threading
-from copy import deepcopy
 
-from lucode.agents.models import pi_default_model
+from lucode.agents.models import layer_model_entries, pi_default_model, resolve_model_ids
 from lucode.agents.updates import available_npm_package_update
 from lucode.config import (
     APP_DIR,
-    BACKGROUND_THREAD_JOIN_TIMEOUT_SECONDS,
     NPM_REGISTRY,
     TOKEN_REFRESH_INTERVAL_SECONDS,
     ToolSpec,
@@ -69,7 +67,7 @@ from lucode.databricks.models import (
 from lucode.parameters import pi_parameters
 from lucode.state import mark_tool_managed, save_state
 from lucode.telemetry import agent_version, lucode_version
-from lucode.ui import print_warning
+from lucode.ui import BACKGROUND_THREAD_JOIN_TIMEOUT_SECONDS, print_warning
 
 PI_lucode_HOME = APP_DIR / "pi-home"
 PI_CONFIG_DIR = PI_lucode_HOME / ".pi" / "agent"
@@ -140,32 +138,21 @@ def _tuned_models(
             if isinstance(entry, dict) and isinstance(entry.get("id"), str):
                 existing_by_id[entry["id"]] = entry
 
-    if managed_ids is not None:
-        model_ids: list[str] = list(managed_ids)
-    elif isinstance(existing_models, list):
-        # Preserve the pre-tuning contract: a user-maintained array defines
-        # membership, and an empty one is a deliberate "none".
-        model_ids = [e["id"] for e in existing_models if isinstance(e, dict) and e.get("id")]
-        if not model_ids:
-            return []
-    else:
-        model_ids = list(discovered_ids)
-
+    existing_ids = (
+        [entry["id"] for entry in existing_models if isinstance(entry, dict) and entry.get("id")]
+        if isinstance(existing_models, list)
+        else None
+    )
+    model_ids = resolve_model_ids(managed_ids, existing_ids, discovered_ids)
     if not model_ids:
-        return None
+        return [] if isinstance(existing_models, list) and managed_ids is None else None
 
-    models: list[dict] = []
-    for model_id in model_ids:
-        # Tuning goes *underneath* the user's entry: every key they set wins,
-        # and any key they never set is filled from the packaged tuning. So a
-        # hand-added bare id still gets its verified caps.
-        entry: dict = {"id": model_id}
-        entry.update(pi_parameters(provider, model_id))
-        existing_entry = existing_by_id.get(model_id)
-        if existing_entry is not None:
-            entry.update(deepcopy(existing_entry))
-        models.append(entry)
-    return models
+    entries = layer_model_entries(
+        model_ids,
+        existing_by_id,
+        lambda model_id: pi_parameters(provider, model_id),
+    )
+    return [{"id": model_id, **entries[model_id]} for model_id in model_ids]
 
 
 def _resolve_model_selector(

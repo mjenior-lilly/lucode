@@ -20,11 +20,10 @@ import subprocess
 import threading
 from copy import deepcopy
 
-from lucode.agents.models import opencode_default_model
+from lucode.agents.models import layer_model_entries, opencode_default_model, resolve_model_ids
 from lucode.agents.updates import available_npm_package_update
 from lucode.config import (
     APP_DIR,
-    BACKGROUND_THREAD_JOIN_TIMEOUT_SECONDS,
     TOKEN_REFRESH_INTERVAL_SECONDS,
     ToolSpec,
     backup_existing_file,
@@ -40,7 +39,7 @@ from lucode.databricks.models import (
 from lucode.parameters import opencode_parameters
 from lucode.state import mark_tool_managed, save_state
 from lucode.telemetry import agent_version, lucode_version
-from lucode.ui import print_warning
+from lucode.ui import BACKGROUND_THREAD_JOIN_TIMEOUT_SECONDS, print_warning
 
 OPENCODE_XDG_CONFIG_HOME = APP_DIR / "opencode-xdg"
 OPENCODE_CONFIG_DIR = OPENCODE_XDG_CONFIG_HOME / "opencode"
@@ -150,25 +149,21 @@ def render_overlay(
         )
         existing_map = existing_provider["models"] if has_user_map else {}
 
-        def tuned(model_id: str) -> dict:
-            # Tuning goes *underneath* the user's entry: keys they set win, keys
-            # they never set are filled from the packaged tuning, so a
-            # hand-added bare id still gets its verified limit.
-            entry = opencode_parameters(provider_id, model_id)
-            existing_entry = existing_map.get(model_id)
-            if isinstance(existing_entry, dict):
-                entry.update(deepcopy(existing_entry))
-            return entry
-
-        if managed_provider_models is not None:
-            selected = managed_provider_models.get(family) or []
-        elif has_user_map:
-            # Preserve the pre-tuning contract: a user map defines membership,
-            # and an empty one is a deliberate "serve nothing".
-            selected = list(existing_map)
-        else:
-            selected = list(discovered)
-        return {model_id: tuned(model_id) for model_id in selected}
+        managed = (
+            managed_provider_models.get(family) or []
+            if managed_provider_models is not None
+            else None
+        )
+        selected = resolve_model_ids(
+            managed,
+            existing_map if has_user_map else None,
+            discovered,
+        )
+        return layer_model_entries(
+            selected,
+            existing_map,
+            lambda model_id: opencode_parameters(provider_id, model_id),
+        )
 
     anthropic_models = selected_models("databricks-anthropic", "anthropic")
     gemini_models = selected_models("databricks-google", "gemini")

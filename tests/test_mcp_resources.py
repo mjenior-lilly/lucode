@@ -1,5 +1,7 @@
 """Tests for MCP resource discovery."""
 
+import pytest
+
 import lucode.mcp.resources as resources
 
 WS = "https://example.databricks.com"
@@ -31,6 +33,46 @@ class TestDiscoveryWarnings:
 
         assert resources.discover_all_mcp_service_names(WS) == []
         assert warnings == []
+
+
+@pytest.mark.parametrize(
+    ("builder", "name_prefix", "url_path"),
+    [
+        (resources.vector_search_mcp_servers, "databricks-vector-search", "vector-search"),
+        (resources.uc_functions_mcp_servers, "databricks-functions", "functions"),
+    ],
+)
+def test_catalog_schema_builders_preserve_shape_order_and_collision_names(
+    builder, name_prefix, url_path
+):
+    servers = builder(
+        [("Zed", "Schema"), ("", "ignored"), ("a b", "c"), ("a-b", "c")],
+        WS,
+    )
+
+    assert servers == [
+        {
+            "name": f"{name_prefix}-a-b-c",
+            "title": "a b.c",
+            "catalog": "a b",
+            "schema": "c",
+            "url": f"{WS}/api/2.0/mcp/{url_path}/a b/c",
+        },
+        {
+            "name": f"{name_prefix}-a-b-c-2",
+            "title": "a-b.c",
+            "catalog": "a-b",
+            "schema": "c",
+            "url": f"{WS}/api/2.0/mcp/{url_path}/a-b/c",
+        },
+        {
+            "name": f"{name_prefix}-zed-schema",
+            "title": "Zed.Schema",
+            "catalog": "Zed",
+            "schema": "Schema",
+            "url": f"{WS}/api/2.0/mcp/{url_path}/Zed/Schema",
+        },
+    ]
 
 
 class TestExternalMcpConnectionNames:

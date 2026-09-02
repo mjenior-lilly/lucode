@@ -289,7 +289,7 @@ def _drain_with_deadline(futures: dict, deadline: float, on_result) -> tuple[int
         for future in as_completed(futures, timeout=remaining):
             try:
                 value = future.result()
-            except Exception as exc:  # noqa: BLE001
+            except Exception as exc:
                 failure_count += 1
                 if first_failure is None:
                     first_failure = f"{type(exc).__name__}: {exc}"

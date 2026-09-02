@@ -154,8 +154,8 @@ def _no_request_msg(server: _CaptureServer, result: subprocess.CompletedProcess 
 
 class TestOpencodeUserAgent:
     def test_user_agent_arrives_at_gateway(self, tmp_path, monkeypatch, capture_server):
+        import lucode.agents.opencode as opencode
         import lucode.config as config_mod
-        from lucode.agents import opencode
 
         _require_binary("opencode")
         xdg = tmp_path / "xdg"
@@ -195,8 +195,8 @@ class TestOpencodeUserAgent:
 
 class TestPiUserAgent:
     def test_user_agent_arrives_at_gateway(self, tmp_path, monkeypatch, capture_server):
+        import lucode.agents.pi as pi
         import lucode.config as config_mod
-        from lucode.agents import pi
 
         _require_binary("pi")
         pi_home = tmp_path / "pi-home"

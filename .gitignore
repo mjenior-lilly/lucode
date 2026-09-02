@@ -9,4 +9,3 @@ dist/
 slop-audit-*.md
 .ruff_cache/
 .pytest_cache/
-.github/

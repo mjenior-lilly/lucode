@@ -15,8 +15,10 @@ from lucode.state import (
     hydrate_state,
     load_full_state,
     load_state,
+    load_workspace_state,
     mark_tool_managed,
     save_state,
+    set_current_workspace,
 )
 
 FAKE_WS = "https://example.databricks.com"
@@ -153,6 +155,26 @@ class TestSaveLoadRoundTrip:
         result = load_state()
         assert result == {}
 
+    def test_load_named_workspace_without_changing_current(self):
+        other = "https://other.databricks.com"
+        save_state({"workspace": FAKE_WS, "claude_models": {"opus": "first"}})
+        save_state({"workspace": other, "claude_models": {"opus": "second"}})
+        loaded = load_workspace_state(FAKE_WS)
+        assert loaded["workspace"] == FAKE_WS
+        assert loaded["claude_models"] == {"opus": "first"}
+        assert load_full_state()["current_workspace"] == other
+
+    def test_dry_run_workspace_selection_creates_no_state_or_lock(self):
+        import lucode.config as config_mod
+
+        config_mod.set_dry_run(True)
+        try:
+            set_current_workspace(FAKE_WS)
+            assert not state_mod.STATE_PATH.exists()
+            assert not (config_mod.APP_DIR / "locks" / "state.lock").exists()
+        finally:
+            config_mod.set_dry_run(False)
+
 
 # ---------------------------------------------------------------------------
 # clear_state
@@ -169,6 +191,17 @@ class TestClearState:
 
     def test_clear_when_no_state_is_noop(self):
         clear_state()  # should not raise
+
+    def test_clear_dry_run_creates_no_state_or_lock_file(self):
+        import lucode.config as config_mod
+
+        config_mod.set_dry_run(True)
+        try:
+            clear_state()
+            assert not state_mod.STATE_PATH.exists()
+            assert not (config_mod.APP_DIR / "locks" / "state.lock").exists()
+        finally:
+            config_mod.set_dry_run(False)
 
 
 # ---------------------------------------------------------------------------
@@ -240,7 +273,7 @@ class TestBuildAgentState:
         assert result == {}
 
     def test_pi_model_is_derived_from_state_not_settings_file(self, tmp_path, monkeypatch):
-        from lucode.agents import pi
+        import lucode.agents.pi as pi
 
         settings = tmp_path / "settings.json"
         settings.write_text('{"defaultModel": "stale"}')

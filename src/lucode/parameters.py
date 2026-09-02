@@ -53,6 +53,7 @@ GENERATED_KEYS = frozenset(
 _PI_MODELS = "pi-models.json"
 _PI_SETTINGS = "pi-settings.json"
 _OPENCODE_MODELS = "opencode-models.json"
+_OPENCODE_GENERATED_KEYS = GENERATED_KEYS - {"options"}
 
 
 def _load(filename: str) -> dict[str, Any]:
@@ -117,7 +118,11 @@ def _opencode_parameters() -> dict[str, dict[str, dict[str, Any]]]:
         if not isinstance(models, dict):
             continue
         entries = {
-            model_id: deepcopy(entry)
+            model_id: {
+                key: deepcopy(value)
+                for key, value in entry.items()
+                if key not in _OPENCODE_GENERATED_KEYS
+            }
             for model_id, entry in models.items()
             if isinstance(model_id, str) and model_id and isinstance(entry, dict)
         }

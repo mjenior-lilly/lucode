@@ -2,7 +2,38 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable, Iterable, Mapping
+from copy import deepcopy
+
 from lucode.databricks.models import ANTHROPIC_FAMILIES, classify_model_family
+
+
+def resolve_model_ids(
+    managed_ids: Iterable[str] | None,
+    existing_ids: Iterable[str] | None,
+    discovered_ids: Iterable[str],
+) -> list[str]:
+    """Resolve membership from managed inventory, user config, then discovery."""
+    source = managed_ids if managed_ids is not None else existing_ids
+    if source is None:
+        source = discovered_ids
+    return [model_id for model_id in source if isinstance(model_id, str) and model_id]
+
+
+def layer_model_entries(
+    model_ids: Iterable[str],
+    existing_entries: Mapping[str, dict],
+    packaged_parameters: Callable[[str], dict],
+) -> dict[str, dict]:
+    """Layer packaged tuning under user entries for the resolved membership."""
+    layered: dict[str, dict] = {}
+    for model_id in model_ids:
+        entry = packaged_parameters(model_id)
+        existing = existing_entries.get(model_id)
+        if isinstance(existing, dict):
+            entry.update(deepcopy(existing))
+        layered[model_id] = entry
+    return layered
 
 
 def pi_default_model(state: dict) -> str | None:

@@ -211,13 +211,19 @@ def catalog_schema_server_name(prefix: str, catalog: str, schema: str, taken: se
     return f"{candidate}-{counter}"
 
 
-def vector_search_mcp_servers(pairs: list[tuple[str, str]], workspace: str) -> list[dict]:
+def _catalog_schema_mcp_servers(
+    pairs: list[tuple[str, str]],
+    workspace: str,
+    *,
+    name_prefix: str,
+    url_path: str,
+) -> list[dict]:
     servers: list[dict] = []
     seen_names: set[str] = set()
     for catalog, schema in pairs:
         if not catalog or not schema:
             continue
-        name = catalog_schema_server_name("databricks-vector-search", catalog, schema, seen_names)
+        name = catalog_schema_server_name(name_prefix, catalog, schema, seen_names)
         seen_names.add(name)
         servers.append(
             {
@@ -225,10 +231,19 @@ def vector_search_mcp_servers(pairs: list[tuple[str, str]], workspace: str) -> l
                 "title": f"{catalog}.{schema}",
                 "catalog": catalog,
                 "schema": schema,
-                "url": f"{workspace}/api/2.0/mcp/vector-search/{catalog}/{schema}",
+                "url": f"{workspace}/api/2.0/mcp/{url_path}/{catalog}/{schema}",
             }
         )
     return sorted(servers, key=lambda server: str(server["title"]).lower())
+
+
+def vector_search_mcp_servers(pairs: list[tuple[str, str]], workspace: str) -> list[dict]:
+    return _catalog_schema_mcp_servers(
+        pairs,
+        workspace,
+        name_prefix="databricks-vector-search",
+        url_path="vector-search",
+    )
 
 
 def discover_vector_search_mcp_servers(
@@ -244,23 +259,12 @@ def discover_vector_search_mcp_servers(
 
 
 def uc_functions_mcp_servers(pairs: list[tuple[str, str]], workspace: str) -> list[dict]:
-    servers: list[dict] = []
-    seen_names: set[str] = set()
-    for catalog, schema in pairs:
-        if not catalog or not schema:
-            continue
-        name = catalog_schema_server_name("databricks-functions", catalog, schema, seen_names)
-        seen_names.add(name)
-        servers.append(
-            {
-                "name": name,
-                "title": f"{catalog}.{schema}",
-                "catalog": catalog,
-                "schema": schema,
-                "url": f"{workspace}/api/2.0/mcp/functions/{catalog}/{schema}",
-            }
-        )
-    return sorted(servers, key=lambda server: str(server["title"]).lower())
+    return _catalog_schema_mcp_servers(
+        pairs,
+        workspace,
+        name_prefix="databricks-functions",
+        url_path="functions",
+    )
 
 
 def discover_uc_functions_mcp_servers(

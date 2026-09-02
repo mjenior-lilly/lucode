@@ -1,7 +1,7 @@
 """End-to-end integration tests that require a live Databricks workspace.
 
 Run with:
-    lucode_TEST_WORKSPACE=https://your-workspace.databricks.com uv run pytest tests/test_e2e.py -v
+    LUCODE_TEST_WORKSPACE=https://your-workspace.databricks.com uv run pytest tests/test_e2e.py -v
 
 All tests in this file are skipped automatically when the env var is not set.
 The agent-launch tests are also skipped per-agent/model when the binary is not
@@ -10,22 +10,15 @@ installed or no models are available.
 
 from __future__ import annotations
 
-import atexit
-import json
 import os
 import shutil
 import subprocess
-import tempfile
-from pathlib import Path
-from urllib import error as urllib_error
-from urllib import request as urllib_request
 
 import pytest
 
 from lucode.databricks.auth import has_valid_databricks_auth
 from lucode.databricks.models import (
     build_shared_base_urls,
-    build_tool_base_url,
     ensure_ai_gateway_v2,
 )
 from lucode.databricks.transport import workspace_hostname
@@ -33,13 +26,8 @@ from lucode.ui import normalize_workspace_url
 
 
 def _ws() -> str:
-    raw = os.environ.get("lucode_TEST_WORKSPACE", "").strip().rstrip("/")
+    raw = os.environ.get("LUCODE_TEST_WORKSPACE", "").strip().rstrip("/")
     return normalize_workspace_url(raw) if raw else ""
-
-
-def _skip_if_no_workspace():
-    if not _ws():
-        pytest.skip("Set lucode_TEST_WORKSPACE=https://... to run E2E tests")
 
 
 def _run_agent(
@@ -48,45 +36,6 @@ def _run_agent(
     return subprocess.run(
         cmd, capture_output=True, text=True, timeout=timeout, env=env, stdin=subprocess.DEVNULL
     )
-
-
-def _codex_home_outside_tmp() -> Path:
-    """Create a fresh CODEX_HOME under the user's home dir, registered for cleanup at exit.
-
-    pytest's ``tmp_path`` lives under ``/tmp``; codex (>=0.134) refuses to create its helper
-    binaries when ``CODEX_HOME`` is under a temporary dir, so launching codex from ``tmp_path``
-    fails before doing anything. Rooting CODEX_HOME under ``$HOME`` sidesteps that guard."""
-    home = Path(tempfile.mkdtemp(prefix=".lucode-e2e-codex-", dir=Path.home()))
-    atexit.register(shutil.rmtree, home, ignore_errors=True)
-    return home
-
-
-def _run_gemini_gateway_smoke(workspace: str, model: str, token: str) -> str:
-    """Call the Gemini gateway directly with a text-only prompt.
-
-    This keeps gateway coverage focused on the recovered Databricks token
-    instead of an agent's separate tool-calling request shape.
-    """
-    url = f"{build_tool_base_url('gemini', workspace)}/v1beta/models/{model}:generateContent"
-    payload = {"contents": [{"role": "user", "parts": [{"text": "say hi in 5 words or less"}]}]}
-    req = urllib_request.Request(
-        url,
-        data=json.dumps(payload).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json",
-            "Accept": "application/json",
-        },
-        method="POST",
-    )
-    try:
-        with urllib_request.urlopen(req, timeout=30) as response:
-            body = response.read().decode("utf-8")
-    except urllib_error.HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace") if exc.fp else ""
-        raise AssertionError(f"Gemini gateway smoke failed: HTTP {exc.code}: {body[:500]}") from exc
-    data = json.loads(body)
-    return data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
 
 
 def _launchable_model_items(models: dict) -> list[tuple[str, str]]:
@@ -173,8 +122,8 @@ class TestOpencodeLaunch:
     def test_launch_opencode_per_model(
         self, tmp_path, monkeypatch, e2e_state, e2e_workspace, e2e_token
     ):
+        import lucode.agents.opencode as opencode
         import lucode.config as config_mod
-        from lucode.agents import opencode
 
         _require_binary("opencode")
         models = self._all_models(e2e_state)
@@ -252,8 +201,8 @@ class TestPiLaunch:
         return out
 
     def test_launch_pi_per_model(self, tmp_path, monkeypatch, e2e_state, e2e_workspace, e2e_token):
+        import lucode.agents.pi as pi
         import lucode.config as config_mod
-        from lucode.agents import pi
 
         _require_binary("pi")
         models = self._all_models(e2e_state)
@@ -289,25 +238,3 @@ class TestPiLaunch:
                     f"family={family} model={model} rc={result.returncode} stdout={result.stdout[:300]!r} stderr={result.stderr[:300]!r}"
                 )
         assert not failures, "Pi launch failures:\n" + "\n".join(failures)
-
-
-def _first_codex_model(e2e_state: dict) -> str:
-    models = e2e_state.get("codex_models") or []
-    if not models:
-        pytest.skip("No Responses-API (codex) models available on this workspace")
-    return models[0]
-
-
-def _make_reauth_fake_databricks(tmp_path, real_token: str) -> str:
-    """Write a fake `databricks` binary that returns empty on the first `auth token`
-    call, then returns a real token on subsequent calls (simulating session expiry
-    followed by successful re-auth). Returns the directory containing the binary."""
-    tmp_path.mkdir(parents=True, exist_ok=True)
-    call_count = tmp_path / "db_calls"
-    call_count.write_text("0")
-    fake = tmp_path / "databricks"
-    fake.write_text(
-        f'''#!/bin/sh\ncount=$(cat {call_count})\necho $((count + 1)) > {call_count}\ncase "$*" in\n  *"auth login"*) exit 0 ;;\nesac\nif [ "$count" -eq 0 ]; then\n  echo '{{"access_token": "", "token_type": "Bearer"}}'\nelse\n  echo '{{"access_token": "{real_token}", "token_type": "Bearer"}}'\nfi\n'''
-    )
-    fake.chmod(493)
-    return str(tmp_path)

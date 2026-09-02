@@ -29,15 +29,21 @@ def load_full_state() -> dict:
     return data
 
 
-def load_state() -> dict:
-    """Load the current workspace's state as a flat dict."""
-    full = load_full_state()
-    workspace = full.get("current_workspace")
+def load_workspace_state(workspace: str | None) -> dict:
+    """Load one named workspace without changing the current selection."""
     if not workspace:
         return {}
-    ws_state = full.get("workspaces", {}).get(workspace, {})
+    full = load_full_state()
+    ws_state = dict(full.get("workspaces", {}).get(workspace, {}))
+    if not ws_state:
+        return {}
     ws_state["workspace"] = workspace
     return hydrate_state(ws_state)
+
+
+def load_state() -> dict:
+    """Load the current workspace's state as a flat dict."""
+    return load_workspace_state(load_full_state().get("current_workspace"))
 
 
 def save_state(state: dict) -> None:
@@ -134,6 +140,8 @@ def build_agent_state(state: dict) -> dict[str, dict]:
 
 def clear_state() -> None:
     """Remove the current workspace entry from state."""
+    if is_dry_run():
+        return
     with file_lock("state"):
         full = load_full_state()
         workspace = full.get("current_workspace")

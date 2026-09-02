@@ -56,7 +56,6 @@ DATABRICKS_PROFILE_LIST_TIMEOUT_SECONDS = 20
 DATABRICKS_LOGIN_TIMEOUT_SECONDS = 300
 DATABRICKS_AUTH_REFRESH_TIMEOUT_SECONDS = 30
 DATABRICKS_MCP_DISCOVERY_TIMEOUT_SECONDS = 30
-BACKGROUND_THREAD_JOIN_TIMEOUT_SECONDS = 1
 
 # ---------------------------------------------------------------------------
 # Refresh, discovery, and pagination defaults
@@ -99,8 +98,7 @@ SKILL_FETCH_MAX_WORKERS = 8
 # Presentation and reporting defaults
 # ---------------------------------------------------------------------------
 
-# Terminal refresh cadence and default component dimensions.
-SPINNER_FRAME_INTERVAL_SECONDS = 0.1
+# Default component dimensions.
 MCP_PICKER_VISIBLE_ROWS = 10
 BUDGET_METER_WIDTH = 28
 
@@ -169,7 +167,11 @@ def _atomic_write(path: Path, content: str) -> None:
 
 @contextmanager
 def file_lock(name: str = "state") -> Iterator[None]:
-    """Serialize lucode read-modify-write operations within ``LUCODE_HOME``."""
+    """Serialize read-modify-write operations on POSIX systems.
+
+    Non-POSIX execution creates the lock file but provides no inter-process
+    serialization.
+    """
     lock_path = APP_DIR / "locks" / f"{name}.lock"
     ensure_parent_dir(lock_path)
     stream: IO[str] = lock_path.open("a+", encoding="utf-8")

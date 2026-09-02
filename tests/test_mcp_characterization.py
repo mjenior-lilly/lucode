@@ -2,6 +2,8 @@
 
 from contextlib import nullcontext
 
+import pytest
+
 import lucode.mcp.commands as commands
 import lucode.mcp.config as config
 import lucode.mcp.picker as picker
@@ -115,3 +117,100 @@ def test_picker_back_navigation_is_preserved(monkeypatch):
     result = picker.prompt_for_mcp_server_choices([], [], [], [], allow_back=True)
 
     assert result is picker._BACK
+
+
+def _empty_discovery():
+    return {
+        "external": [],
+        "apps": [],
+        "services": [],
+        "genie": [],
+        "vector_search": [],
+        "uc_functions": [],
+    }
+
+
+def test_interactive_prompt_supports_back_then_new_selection(monkeypatch):
+    source_answers = iter([{"apps"}, {"external"}])
+    picker_answers = iter([picker._BACK, ["kept"]])
+    discoveries: list[set[str]] = []
+    monkeypatch.setattr(commands, "prompt_for_mcp_search_sources", lambda: next(source_answers))
+    monkeypatch.setattr(
+        commands,
+        "_discover_selected_mcp_sources",
+        lambda _workspace, _profile, sources: discoveries.append(sources) or _empty_discovery(),
+    )
+    monkeypatch.setattr(
+        commands,
+        "prompt_for_mcp_server_choices",
+        lambda *args, **kwargs: next(picker_answers),
+    )
+
+    selections, discovered = commands._prompt_for_interactive_selections(WS, None, [])
+
+    assert selections == ["kept"]
+    assert discovered == _empty_discovery()
+    assert discoveries == [{"apps"}, {"external"}]
+
+
+def test_interactive_cancel_does_not_start_discovery(monkeypatch):
+    monkeypatch.setattr(commands, "prompt_for_mcp_search_sources", lambda: None)
+    monkeypatch.setattr(
+        commands,
+        "_discover_selected_mcp_sources",
+        lambda *_: pytest.fail("discovery should not run after cancellation"),
+    )
+
+    assert commands._prompt_for_interactive_selections(WS, None, []) == (None, {})
+
+
+def test_interactive_reconciliation_keeps_adds_deduplicates_and_skips_invalid(monkeypatch):
+    skills_entry = {"name": "skills", "kind": skills.SKILLS_MCP_KIND}
+    kept = {"name": "kept", "url": f"{WS}/kept", "clients": ["opencode"]}
+    warnings: list[str] = []
+
+    def resolve(selection, *_args):
+        if selection == "good":
+            return "new", f"{WS}/new"
+        if selection == "duplicate":
+            return "kept", f"{WS}/duplicate"
+        raise RuntimeError("invalid selection")
+
+    monkeypatch.setattr(commands, "resolve_mcp_selection", resolve)
+    monkeypatch.setattr(commands, "print_warning", warnings.append)
+
+    servers, names = commands._reconcile_interactive_selections(
+        ["kept", "kept", "add:good", "add:duplicate", "add:bad", "missing"],
+        [kept, skills_entry],
+        ["opencode"],
+        WS,
+        _empty_discovery(),
+    )
+
+    assert servers == [
+        skills_entry,
+        kept,
+        {
+            "name": "new",
+            "url": f"{WS}/new",
+            "auth": "proxy",
+            "clients": ["opencode"],
+        },
+    ]
+    assert names == {"kept", "new"}
+    assert warnings == ["Skipped MCP selection `bad`: invalid selection."]
+
+
+def test_empty_interactive_selection_prints_guidance_without_saving(monkeypatch):
+    notes: list[str] = []
+    monkeypatch.setattr(
+        commands,
+        "_prompt_for_interactive_selections",
+        lambda *_: ([], _empty_discovery()),
+    )
+    monkeypatch.setattr(commands, "apply_mcp_server_changes", lambda *args, **kwargs: False)
+    monkeypatch.setattr(commands, "save_state", lambda *_: pytest.fail("state should not be saved"))
+    monkeypatch.setattr(commands, "print_note", notes.append)
+
+    assert commands._configure_interactive_mode({}, WS, None, ["opencode"]) == 0
+    assert notes == ["No MCP servers selected. Press space to toggle an item, then enter to save."]

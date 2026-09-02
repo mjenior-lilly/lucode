@@ -10,6 +10,7 @@ import pytest
 
 import lucode.databricks.transport as db_mod
 from lucode.databricks.transport import (
+    _debug_enabled,
     _scrub_databrickscfg,
     _scrub_json,
     format_subprocess_result,
@@ -18,6 +19,15 @@ from lucode.databricks.transport import (
 )
 
 WS = "https://example.databricks.com"
+
+
+def test_debug_enabled_uses_uppercase_environment(monkeypatch):
+    monkeypatch.delenv("LUCODE_DEBUG", raising=False)
+    assert _debug_enabled() is False
+    monkeypatch.setenv("LUCODE_DEBUG", "1")
+    assert _debug_enabled() is True
+    monkeypatch.setenv("LUCODE_DEBUG", "true")
+    assert _debug_enabled() is False
 
 
 class _FakeResponse:
@@ -54,7 +64,7 @@ class TestWorkspaceHostname:
 class TestHttpGetJsonReason:
     """The `reason` string returned by `http_get_json` must include the response body
     so callers (e.g. ensure_ai_gateway_v2) can route on it. Before issue #84's fix
-    the body was logged only when lucode_DEBUG=1 and dropped from the bubbled error."""
+    the body was logged only when LUCODE_DEBUG=1 and dropped from the bubbled error."""
 
     @staticmethod
     def _http_error(code: int, msg: str, body: str = ""):

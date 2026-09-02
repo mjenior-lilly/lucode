@@ -241,62 +241,71 @@ def _resolve_location_mcp_servers(
     return [*working_servers, *skills_entries(original_servers)]
 
 
-def configure_mcp_command(location: str | None = None, services: set[str] | None = None) -> int:
-    if services is not None and location is None:
-        # `--services` works standalone with full names (`system.ai.github`): the
-        # `<catalog>.<schema>` to configure is derived from them. Bare short names
-        # (`github`) can't be located without `--location`.
-        schemas = {".".join(s.split(".")[:2]) for s in services if s.count(".") >= 2}
-        bare = sorted(s for s in services if s.count(".") < 2)
-        if bare:
-            raise RuntimeError(
-                "--services short names need --location (or pass full names like "
-                f"`system.ai.<name>`): {', '.join(bare)}"
-            )
-        if len(schemas) != 1:
-            raise RuntimeError(
-                "--services without --location must all share one `<catalog>.<schema>` "
-                f"(got: {', '.join(sorted(schemas)) or 'none'}); pass --location instead."
-            )
-        location = next(iter(schemas))
-    state = load_state()
-    workspace, profile, clients = setup_mcp_clients(state, "MCP Servers")
+def _location_from_services(location: str | None, services: set[str] | None) -> str | None:
+    if services is None or location is not None:
+        return location
 
-    original_mcp_servers_for_location: list[dict] = list(state.get("mcp_servers") or [])
-    if location is not None:
-        working_mcp_servers = _resolve_location_mcp_servers(
-            workspace, profile, clients, location, original_mcp_servers_for_location, services
+    # Full service names identify their schema. Short names require an explicit
+    # location because they carry no catalog or schema information.
+    schemas = {".".join(service.split(".")[:2]) for service in services if service.count(".") >= 2}
+    bare = sorted(service for service in services if service.count(".") < 2)
+    if bare:
+        raise RuntimeError(
+            "--services short names need --location (or pass full names like "
+            f"`system.ai.<name>`): {', '.join(bare)}"
         )
-        changed = apply_mcp_server_changes(
-            original_mcp_servers_for_location,
-            working_mcp_servers,
-            clients,
-            workspace,
-            profile,
-            use_pat=bool(state.get("use_pat")),
+    if len(schemas) != 1:
+        raise RuntimeError(
+            "--services without --location must all share one `<catalog>.<schema>` "
+            f"(got: {', '.join(sorted(schemas)) or 'none'}); pass --location instead."
         )
-        if changed or original_mcp_servers_for_location != working_mcp_servers:
-            state["mcp_servers"] = working_mcp_servers
-            save_state(state)
-            print_success("Saved")
-        return 0
+    return next(iter(schemas))
 
-    original_mcp_servers: list[dict] = list(state.get("mcp_servers") or [])
-    # Skills connections are managed by `configure skills`, so keep them out of
-    # the picker and carry them through untouched.
-    skills_servers = skills_entries(original_mcp_servers)
-    picker_servers = [s for s in original_mcp_servers if s.get("kind") != SKILLS_MCP_KIND]
-    original_by_name = servers_by_name(picker_servers)
 
-    # Two-step wizard: (1) choose which sources to search, (2) pick servers from
-    # the results. Pressing Left (←) in the picker returns to step 1, so the user
-    # can revise their source selection without restarting the command.
+def _configure_location_mode(
+    state: dict,
+    workspace: str,
+    profile: str | None,
+    clients: list[str],
+    location: str,
+    services: set[str] | None,
+) -> int:
+    original_servers: list[dict] = list(state.get("mcp_servers") or [])
+    working_servers = _resolve_location_mcp_servers(
+        workspace,
+        profile,
+        clients,
+        location,
+        original_servers,
+        services,
+    )
+    changed = apply_mcp_server_changes(
+        original_servers,
+        working_servers,
+        clients,
+        workspace,
+        profile,
+        use_pat=bool(state.get("use_pat")),
+    )
+    if changed or original_servers != working_servers:
+        state["mcp_servers"] = working_servers
+        save_state(state)
+        print_success("Saved")
+    return 0
+
+
+def _prompt_for_interactive_selections(
+    workspace: str,
+    profile: str | None,
+    picker_servers: list[dict],
+) -> tuple[list[str] | None, dict[str, list]]:
+    # Left from the server picker reopens source selection; cancellation from
+    # either step exits without applying changes.
     while True:
         sources = prompt_for_mcp_search_sources()
         if sources is None:
-            return 0
+            return None, {}
         discovered = _discover_selected_mcp_sources(workspace, profile, sources)
-
         selections = prompt_for_mcp_server_choices(
             discovered["external"],
             discovered["genie"],
@@ -308,17 +317,26 @@ def configure_mcp_command(location: str | None = None, services: set[str] | None
             allow_back=True,
         )
         if selections is None:
-            return 0
+            return None, {}
         if isinstance(selections, _Back):
             continue
-        break
+        return selections, discovered
 
-    available_app_mcp_servers = discovered["apps"]
-    available_genie_mcp_servers = discovered["genie"]
-    available_vector_search_servers = discovered["vector_search"]
-    available_uc_functions_servers = discovered["uc_functions"]
 
-    working_mcp_servers: list[dict] = list(skills_servers)
+def _reconcile_interactive_selections(
+    selections: list[str],
+    original_servers: list[dict],
+    clients: list[str],
+    workspace: str,
+    discovered: dict[str, list],
+) -> tuple[list[dict], set[str]]:
+    skills_servers = skills_entries(original_servers)
+    picker_servers = [
+        server for server in original_servers if server.get("kind") != SKILLS_MCP_KIND
+    ]
+    original_by_name = servers_by_name(picker_servers)
+
+    working_servers: list[dict] = list(skills_servers)
     working_names: set[str] = set()
     add_selections: list[str] = []
     for selection in selections:
@@ -327,7 +345,7 @@ def configure_mcp_command(location: str | None = None, services: set[str] | None
             continue
         original = original_by_name.get(selection)
         if original and selection not in working_names:
-            working_mcp_servers.append(original.copy())
+            working_servers.append(original.copy())
             working_names.add(selection)
 
     for selection in add_selections:
@@ -335,17 +353,17 @@ def configure_mcp_command(location: str | None = None, services: set[str] | None
             entry_name, url = resolve_mcp_selection(
                 selection,
                 workspace,
-                available_app_mcp_servers,
-                available_genie_mcp_servers,
-                available_vector_search_servers,
-                available_uc_functions_servers,
+                discovered["apps"],
+                discovered["genie"],
+                discovered["vector_search"],
+                discovered["uc_functions"],
             )
         except RuntimeError as exc:
             print_warning(f"Skipped MCP selection `{selection}`: {exc}.")
             continue
         if entry_name in working_names:
             continue
-        working_mcp_servers.append(
+        working_servers.append(
             {
                 "name": entry_name,
                 "url": url,
@@ -354,25 +372,57 @@ def configure_mcp_command(location: str | None = None, services: set[str] | None
             }
         )
         working_names.add(entry_name)
+    return working_servers, working_names
 
+
+def _configure_interactive_mode(
+    state: dict,
+    workspace: str,
+    profile: str | None,
+    clients: list[str],
+) -> int:
+    original_servers: list[dict] = list(state.get("mcp_servers") or [])
+    picker_servers = [
+        server for server in original_servers if server.get("kind") != SKILLS_MCP_KIND
+    ]
+    selections, discovered = _prompt_for_interactive_selections(workspace, profile, picker_servers)
+    if selections is None:
+        return 0
+
+    working_servers, working_names = _reconcile_interactive_selections(
+        selections,
+        original_servers,
+        clients,
+        workspace,
+        discovered,
+    )
+    original_by_name = servers_by_name(picker_servers)
     changed = apply_mcp_server_changes(
-        original_mcp_servers,
-        working_mcp_servers,
+        original_servers,
+        working_servers,
         clients,
         workspace,
         profile,
         use_pat=bool(state.get("use_pat")),
     )
-    if changed or original_mcp_servers != working_mcp_servers:
-        state["mcp_servers"] = working_mcp_servers
+    if changed or original_servers != working_servers:
+        state["mcp_servers"] = working_servers
         save_state(state)
         added = sorted(working_names - set(original_by_name))
         removed = sorted(set(original_by_name) - working_names)
         print_success(_mcp_change_summary(added, removed, clients))
-    elif not selections and not original_mcp_servers:
-        # User submitted the picker without toggling anything --> make it clear nothing was selected
+    elif not selections and not original_servers:
         print_note("No MCP servers selected. Press space to toggle an item, then enter to save.")
     return 0
+
+
+def configure_mcp_command(location: str | None = None, services: set[str] | None = None) -> int:
+    location = _location_from_services(location, services)
+    state = load_state()
+    workspace, profile, clients = setup_mcp_clients(state, "MCP Servers")
+    if location is not None:
+        return _configure_location_mode(state, workspace, profile, clients, location, services)
+    return _configure_interactive_mode(state, workspace, profile, clients)
 
 
 def _mcp_change_summary(added: list[str], removed: list[str], clients: list[str]) -> str:

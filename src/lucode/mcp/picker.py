@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import string
+from collections.abc import Callable
 from typing import Any
 
 import questionary
@@ -87,6 +88,137 @@ def _add_choice(selection: str, title: str, *, checked: bool = False) -> questio
     return questionary.Choice(title=title, value=f"{MCP_ADD_PREFIX}{selection}", checked=checked)
 
 
+def _checkbox_layout(
+    control: InquirerControl,
+    choices: list[questionary.Choice | questionary.Separator],
+    get_prompt_tokens: Callable[[], list[tuple[str, str]]],
+) -> Layout:
+    visible_rows = min(MCP_PICKER_VISIBLE_ROWS, max(1, len(choices)))
+    has_more_choices = len(choices) > MCP_PICKER_VISIBLE_ROWS
+
+    @Condition
+    def has_search_string() -> bool:
+        return control.get_search_string_tokens() is not None
+
+    validation_prompt: PromptSession = PromptSession(bottom_toolbar=lambda: control.error_message)
+    # A PromptSession container expands to fill tall terminals and pushes the
+    # choices to the bottom, so the question itself uses a fixed-height window.
+    return Layout(
+        HSplit(
+            [
+                Window(
+                    height=Dimension.exact(1),
+                    content=FormattedTextControl(get_prompt_tokens),
+                ),
+                ConditionalContainer(
+                    Window(control, height=Dimension(preferred=visible_rows, max=visible_rows)),
+                    filter=~IsDone(),
+                ),
+                ConditionalContainer(
+                    Window(
+                        height=Dimension.exact(1),
+                        content=FormattedTextControl(
+                            lambda: [("class:instruction", "  ↑/↓ scroll for more")]
+                        ),
+                    ),
+                    filter=Condition(lambda: has_more_choices) & ~IsDone(),
+                ),
+                ConditionalContainer(
+                    Window(
+                        height=Dimension.exact(2),
+                        content=FormattedTextControl(control.get_search_string_tokens),
+                    ),
+                    filter=has_search_string & ~IsDone(),
+                ),
+                ConditionalContainer(
+                    validation_prompt.layout.container,
+                    filter=Condition(lambda: control.error_message is not None),
+                ),
+            ]
+        )
+    )
+
+
+def _checkbox_key_bindings(
+    control: InquirerControl,
+    get_selected_values: Callable[[], list[Any]],
+    perform_validation: Callable[[], bool],
+    *,
+    allow_back: bool,
+) -> KeyBindings:
+    bindings = KeyBindings()
+
+    @bindings.add(Keys.ControlQ, eager=True)
+    @bindings.add(Keys.ControlC, eager=True)
+    def abort(event: Any) -> None:
+        event.app.exit(exception=KeyboardInterrupt, style="class:aborting")
+
+    @bindings.add(" ", eager=True)
+    def toggle_pointed(_event: Any) -> None:
+        pointed_choice = control.get_pointed_at().value
+        if pointed_choice in control.selected_options:
+            control.selected_options.remove(pointed_choice)
+        else:
+            control.selected_options.append(pointed_choice)
+        perform_validation()
+
+    @bindings.add(Keys.ControlA, eager=True)
+    def toggle_all(_event: Any) -> None:
+        # A plain `a` remains available for type-to-filter.
+        selectable = [
+            choice.value
+            for choice in control.choices
+            if not isinstance(choice, questionary.Separator) and not choice.disabled
+        ]
+        if all(value in control.selected_options for value in selectable):
+            control.selected_options = []
+        else:
+            control.selected_options = list(selectable)
+        perform_validation()
+
+    def move_cursor_down(_event: Any) -> None:
+        control.select_next()
+        while not control.is_selection_valid():
+            control.select_next()
+
+    def move_cursor_up(_event: Any) -> None:
+        control.select_previous()
+        while not control.is_selection_valid():
+            control.select_previous()
+
+    def search_filter(event: Any) -> None:
+        control.add_search_character(event.key_sequence[0].key)
+
+    for character in string.printable:
+        if character not in string.whitespace:
+            bindings.add(character, eager=True)(search_filter)
+    bindings.add(Keys.Backspace, eager=True)(search_filter)
+
+    bindings.add(Keys.Down, eager=True)(move_cursor_down)
+    bindings.add(Keys.Up, eager=True)(move_cursor_up)
+    bindings.add(Keys.ControlN, eager=True)(move_cursor_down)
+    bindings.add(Keys.ControlP, eager=True)(move_cursor_up)
+
+    @bindings.add(Keys.ControlM, eager=True)
+    def submit(event: Any) -> None:
+        control.submission_attempted = True
+        if perform_validation():
+            control.is_answered = True
+            event.app.exit(result=get_selected_values())
+
+    if allow_back:
+
+        @bindings.add(Keys.Left, eager=True)
+        def go_back(event: Any) -> None:
+            event.app.exit(result=_BACK)
+
+    @bindings.add(Keys.Any)
+    def ignore(_event: Any) -> None:
+        """Ignore keys that have no picker action."""
+
+    return bindings
+
+
 def _scrolling_checkbox(
     message: str,
     choices: list[questionary.Choice | questionary.Separator],
@@ -123,134 +255,47 @@ def _scrolling_checkbox(
         control.error_message = None
         return True
 
-    visible_rows = min(MCP_PICKER_VISIBLE_ROWS, max(1, len(choices)))
-    has_more_choices = len(choices) > MCP_PICKER_VISIBLE_ROWS
-
-    @Condition
-    def has_search_string() -> bool:
-        return control.get_search_string_tokens() is not None
-
-    validation_prompt: PromptSession = PromptSession(bottom_toolbar=lambda: control.error_message)
-    # Render the prompt as a fixed 1-row window rather than a PromptSession
-    # container: the latter expands to fill the terminal height, which in a tall
-    # window pushes the choices list to the very bottom (a large blank gap).
-    layout = Layout(
-        HSplit(
-            [
-                Window(
-                    height=Dimension.exact(1),
-                    content=FormattedTextControl(get_prompt_tokens),
-                ),
-                ConditionalContainer(
-                    Window(control, height=Dimension(preferred=visible_rows, max=visible_rows)),
-                    filter=~IsDone(),
-                ),
-                ConditionalContainer(
-                    Window(
-                        height=Dimension.exact(1),
-                        content=FormattedTextControl(
-                            lambda: [("class:instruction", "  ↑/↓ scroll for more")]
-                        ),
-                    ),
-                    filter=Condition(lambda: has_more_choices) & ~IsDone(),
-                ),
-                ConditionalContainer(
-                    Window(
-                        height=Dimension.exact(2),
-                        content=FormattedTextControl(control.get_search_string_tokens),
-                    ),
-                    filter=has_search_string & ~IsDone(),
-                ),
-                ConditionalContainer(
-                    validation_prompt.layout.container,
-                    filter=Condition(lambda: control.error_message is not None),
-                ),
-            ]
-        )
-    )
-
-    bindings = KeyBindings()
-
-    @bindings.add(Keys.ControlQ, eager=True)
-    @bindings.add(Keys.ControlC, eager=True)
-    def _(event: Any) -> None:
-        event.app.exit(exception=KeyboardInterrupt, style="class:aborting")
-
-    @bindings.add(" ", eager=True)
-    def _(_event: Any) -> None:
-        pointed_choice = control.get_pointed_at().value
-        if pointed_choice in control.selected_options:
-            control.selected_options.remove(pointed_choice)
-        else:
-            control.selected_options.append(pointed_choice)
-        perform_validation()
-
-    @bindings.add(Keys.ControlA, eager=True)
-    def _(_event: Any) -> None:
-        # Toggle-all: select every selectable choice, or clear the selection if
-        # everything is already selected. `a` alone is reserved for type-to-filter.
-        selectable = [
-            choice.value
-            for choice in control.choices
-            if not isinstance(choice, questionary.Separator) and not choice.disabled
-        ]
-        if all(value in control.selected_options for value in selectable):
-            control.selected_options = []
-        else:
-            control.selected_options = list(selectable)
-        perform_validation()
-
-    def move_cursor_down(event: Any) -> None:
-        control.select_next()
-        while not control.is_selection_valid():
-            control.select_next()
-
-    def move_cursor_up(event: Any) -> None:
-        control.select_previous()
-        while not control.is_selection_valid():
-            control.select_previous()
-
-    def search_filter(event: Any) -> None:
-        control.add_search_character(event.key_sequence[0].key)
-
-    for character in string.printable:
-        if character in string.whitespace:
-            continue
-        bindings.add(character, eager=True)(search_filter)
-    bindings.add(Keys.Backspace, eager=True)(search_filter)
-
-    bindings.add(Keys.Down, eager=True)(move_cursor_down)
-    bindings.add(Keys.Up, eager=True)(move_cursor_up)
-    bindings.add(Keys.ControlN, eager=True)(move_cursor_down)
-    bindings.add(Keys.ControlP, eager=True)(move_cursor_up)
-
-    @bindings.add(Keys.ControlM, eager=True)
-    def _(event: Any) -> None:
-        control.submission_attempted = True
-        if perform_validation():
-            control.is_answered = True
-            event.app.exit(result=get_selected_values())
-
-    if allow_back:
-
-        @bindings.add(Keys.Left, eager=True)
-        def _(event: Any) -> None:
-            # Wizard back-navigation: exit this step with the _BACK sentinel so
-            # the caller re-shows the previous step. Left arrow is otherwise
-            # unused in this multi-select (cursor moves with up/down).
-            event.app.exit(result=_BACK)
-
-    @bindings.add(Keys.Any)
-    def _(_event: Any) -> None:
-        """Ignore other text input."""
-
     return Question(
         Application(
-            layout=layout,
-            key_bindings=bindings,
+            layout=_checkbox_layout(control, choices, get_prompt_tokens),
+            key_bindings=_checkbox_key_bindings(
+                control,
+                get_selected_values,
+                perform_validation,
+                allow_back=allow_back,
+            ),
             style=merged_style,
         )
     )
+
+
+def _append_catalog_schema_choices(
+    choices: list[questionary.Choice | questionary.Separator],
+    servers: list[dict],
+    known_names: set[str],
+    *,
+    selection_prefix: str,
+    label: str,
+) -> set[str]:
+    displayed_names: set[str] = set()
+    for server in servers:
+        name = server_name(server)
+        catalog = server.get("catalog")
+        schema = server.get("schema")
+        if not name or not isinstance(catalog, str) or not isinstance(schema, str):
+            continue
+        display_title = f"{label}: {catalog}.{schema}"
+        if name in known_names:
+            choices.append(_server_choice(name, True, display_title))
+        else:
+            choices.append(
+                _add_choice(
+                    f"{selection_prefix}{catalog}.{schema}",
+                    display_title,
+                )
+            )
+        displayed_names.add(name)
+    return displayed_names
 
 
 def build_mcp_picker_choices(
@@ -334,41 +379,24 @@ def build_mcp_picker_choices(
             )
         displayed_names.add(name)
 
-    for server in available_vector_search_servers or []:
-        name = server_name(server)
-        catalog = server.get("catalog")
-        schema = server.get("schema")
-        if not name or not isinstance(catalog, str) or not isinstance(schema, str):
-            continue
-        display_title = f"Vector Search: {catalog}.{schema}"
-        if name in known_names:
-            choices.append(_server_choice(name, True, display_title))
-        else:
-            choices.append(
-                _add_choice(
-                    f"{VECTOR_SEARCH_SELECTION_PREFIX}{catalog}.{schema}",
-                    display_title,
-                )
-            )
-        displayed_names.add(name)
-
-    for server in available_uc_functions_servers or []:
-        name = server_name(server)
-        catalog = server.get("catalog")
-        schema = server.get("schema")
-        if not name or not isinstance(catalog, str) or not isinstance(schema, str):
-            continue
-        display_title = f"UC Functions: {catalog}.{schema}"
-        if name in known_names:
-            choices.append(_server_choice(name, True, display_title))
-        else:
-            choices.append(
-                _add_choice(
-                    f"{UC_FUNCTIONS_SELECTION_PREFIX}{catalog}.{schema}",
-                    display_title,
-                )
-            )
-        displayed_names.add(name)
+    displayed_names.update(
+        _append_catalog_schema_choices(
+            choices,
+            available_vector_search_servers or [],
+            known_names,
+            selection_prefix=VECTOR_SEARCH_SELECTION_PREFIX,
+            label="Vector Search",
+        )
+    )
+    displayed_names.update(
+        _append_catalog_schema_choices(
+            choices,
+            available_uc_functions_servers or [],
+            known_names,
+            selection_prefix=UC_FUNCTIONS_SELECTION_PREFIX,
+            label="UC Functions",
+        )
+    )
 
     for name in sorted(known_names - displayed_names):
         choices.append(_server_choice(name, True))

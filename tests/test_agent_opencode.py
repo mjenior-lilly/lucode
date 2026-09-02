@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from unittest.mock import patch
 
-from lucode.agents import opencode
+import lucode.agents.opencode as opencode
 
 WS = "https://example.databricks.com"
 

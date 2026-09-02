@@ -158,7 +158,7 @@ def serve(url: str, workspace: str, profile: str | None = None, *, use_pat: bool
 
     try:
         anyio.run(_run, url, workspace, profile)
-    except BaseException as exc:  # noqa: BLE001 - re-raised unless it's an auth failure
+    except BaseException as exc:  # Re-raised unless it is an authentication failure.
         # The token can still expire mid-session; report that the same way
         # rather than letting the ExceptionGroup surface as a hang or traceback.
         auth_error = _unwrap_auth_error(exc)

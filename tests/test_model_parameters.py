@@ -10,8 +10,9 @@ from __future__ import annotations
 import json
 from importlib import resources
 
+import lucode.agents.opencode as opencode
+import lucode.agents.pi as pi
 from lucode import parameters
-from lucode.agents import opencode, pi
 
 
 class TestPackagedDefaultsAreImportable:
@@ -68,10 +69,39 @@ class TestNoCredentialsOrRoutesLeak:
     def test_opencode_options_are_kept_as_parameters(self):
         # Per-model `options` is providerOptions, not a credential: OpenCode
         # reads toolStreaming from it, so it must survive the strip.
-        params = parameters.opencode_parameters(
-            "databricks-anthropic", "system.ai.claude-opus-5"
-        )
+        params = parameters.opencode_parameters("databricks-anthropic", "system.ai.claude-opus-5")
         assert "limit" in params
+
+    def test_opencode_generated_keys_are_stripped_but_tuning_survives(self, monkeypatch):
+        payload = {
+            "provider": {
+                "databricks-oss": {
+                    "models": {
+                        "model": {
+                            "apiKey": "secret",
+                            "baseURL": "https://stale",
+                            "headers": {"Authorization": "secret"},
+                            "authHeader": True,
+                            "api": "route",
+                            "npm": "package",
+                            "options": {"toolStreaming": False},
+                            "limit": {"context": 1, "output": 1},
+                            "name": "Model",
+                        }
+                    }
+                }
+            }
+        }
+        parameters._opencode_parameters.cache_clear()
+        monkeypatch.setattr(parameters, "_load", lambda filename: payload)
+        try:
+            params = parameters.opencode_parameters("databricks-oss", "model")
+        finally:
+            parameters._opencode_parameters.cache_clear()
+        assert not (set(params) & parameters._OPENCODE_GENERATED_KEYS)
+        assert params["options"] == {"toolStreaming": False}
+        assert params["limit"] == {"context": 1, "output": 1}
+        assert params["name"] == "Model"
 
 
 class TestparametersIsIsolatedFromCallers:

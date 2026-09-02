@@ -6,7 +6,7 @@ listings when UC model-services are absent, and surfaces only `system.ai.*`
 entries from the UC primitives.
 
 Run with:
-    lucode_TEST_WORKSPACE=https://your-workspace.databricks.com \
+    LUCODE_TEST_WORKSPACE=https://your-workspace.databricks.com \
       uv run pytest tests/test_e2e_uc.py -v
 """
 
@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import pytest
 
-from lucode.cli import configure_shared_state
+from lucode.configuration import configure_shared_state
 from lucode.databricks.mcp_discovery import list_mcp_services
 from lucode.databricks.models import discover_model_services
 from lucode.state import load_state

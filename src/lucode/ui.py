@@ -15,7 +15,8 @@ from rich.markup import escape
 from rich.panel import Panel
 from rich.progress import BarColumn, MofNCompleteColumn, Progress, TextColumn
 
-from lucode.config import BACKGROUND_THREAD_JOIN_TIMEOUT_SECONDS, SPINNER_FRAME_INTERVAL_SECONDS
+SPINNER_FRAME_INTERVAL_SECONDS = 0.1
+BACKGROUND_THREAD_JOIN_TIMEOUT_SECONDS = 1
 
 console = Console(highlight=False)
 err_console = Console(stderr=True, highlight=False)

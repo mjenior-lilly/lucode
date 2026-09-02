@@ -53,7 +53,16 @@ update failure retains the active revision and warns before launch. Use
 For OpenCode, run `loc`, or use `lucode opencode` as the long form. On first
 launch, `lucode` prompts for a workspace, authenticates, discovers models, and
 writes the agent configuration. Later launches reuse the workspace and refresh
-the token while the session runs.
+the token while the session runs. Launch options are accepted before or after
+the subcommand; a subcommand workspace overrides a global workspace:
+
+```bash
+lucode --workspace https://example.databricks.com pi --skip-preflight
+lucode pi --workspace https://example.databricks.com --dry-run
+loc --workspace https://example.databricks.com
+```
+
+`--dry-run` previews configuration without writing state or agent files.
 
 ## Configure workspaces and agents
 
@@ -151,4 +160,4 @@ environment variables and targets.
 - [Databricks CLI authentication](https://docs.databricks.com/aws/en/dev-tools/cli/authentication)
 
 Report security vulnerabilities to security@databricks.com rather than opening
-a public issue. See [LICENSE.md](./LICENSE.md) and [NOTICE.md](./NOTICE.md).
+a public issue. See [LICENSE.md](./licensing/LICENSE.md) and [NOTICE.md](./licensing/NOTICE.md).

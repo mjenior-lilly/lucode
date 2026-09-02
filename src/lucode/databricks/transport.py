@@ -31,14 +31,14 @@ from lucode.ui import err_console, normalize_workspace_url
 
 
 def _debug_enabled() -> bool:
-    return os.environ.get("lucode_DEBUG") == "1"
+    return os.environ.get("LUCODE_DEBUG") == "1"
 
 
 _DEBUG_LOGGER: logging.Logger | None = None
 
 
 def _get_debug_logger() -> logging.Logger | None:
-    """Lazily configure a rotating file logger when lucode_DEBUG=1.
+    """Lazily configure a rotating file logger when LUCODE_DEBUG=1.
 
     Returns the logger on first call (and caches it), or None if debug is
     disabled or the log file could not be opened. A one-time breadcrumb is
@@ -72,7 +72,7 @@ def _get_debug_logger() -> logging.Logger | None:
 
 
 def debug(label: str, detail: str) -> None:
-    """When lucode_DEBUG=1, append a timestamped entry to ~/.lucode/debug.log."""
+    """When LUCODE_DEBUG=1, append a timestamped entry to ~/.lucode/debug.log."""
     logger = _get_debug_logger()
     if logger is not None:
         logger.debug("%s: %s", label, detail)
@@ -143,7 +143,7 @@ def _scrub_text(text: str) -> str:
 def log_auth_diagnostics() -> None:
     """Dump CLI version, profiles, and ~/.databrickscfg (scrubbed) to the debug log.
 
-    No-op unless lucode_DEBUG=1; cached so it runs at most once per process."""
+    No-op unless LUCODE_DEBUG=1; cached so it runs at most once per process."""
     if not _debug_enabled():
         return
 
@@ -204,7 +204,7 @@ def http_get_json(
 ) -> tuple[dict | list | None, str | None]:
     """GET a JSON endpoint. Returns (payload, None) on success, (None, reason) on failure.
 
-    Honors lucode_DEBUG=1 to append status + truncated body to ~/.lucode/debug.log.
+    Honors LUCODE_DEBUG=1 to append status + truncated body to ~/.lucode/debug.log.
     """
     request = urllib_request.Request(
         url,

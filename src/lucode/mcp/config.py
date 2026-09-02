@@ -8,7 +8,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from urllib.parse import urlparse
 
-from lucode.agents import opencode
+import lucode.agents.opencode as opencode
 from lucode.databricks.auth import (
     apply_pat_environment,
     build_mcp_proxy_argv,

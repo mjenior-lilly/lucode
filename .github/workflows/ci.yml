@@ -24,7 +24,7 @@ jobs:
   e2e:
     runs-on: ubuntu-latest
     env:
-      UCODE_TEST_WORKSPACE: ${{ secrets.UCODE_TEST_WORKSPACE }}
+      LUCODE_TEST_WORKSPACE: ${{ secrets.UCODE_TEST_WORKSPACE }}
       DATABRICKS_HOST: ${{ secrets.UCODE_TEST_WORKSPACE }}
       # A hosted runner has no Databricks user-OAuth cache. Supply a short-lived
       # bearer so auth never falls back to an interactive browser login.
@@ -43,4 +43,6 @@ jobs:
           opencode-ai
           @earendil-works/pi-coding-agent
       - run: uv tool install --locked .
+      - name: Require live-workspace credentials
+        run: test -n "$LUCODE_TEST_WORKSPACE"
       - run: uv run --locked pytest tests/test_e2e.py tests/test_e2e_uc.py tests/test_e2e_user_agent.py -v < /dev/null
