@@ -24,12 +24,6 @@ from lucode.agents.registry import (
 )
 from lucode.agents.validation import validate_tool
 from lucode.config import restore_file, set_dry_run
-from lucode.configuration import (
-    ConfigurationRequest,
-    _prompt_for_configuration,
-    configure_shared_state,
-    run_configuration,
-)
 from lucode.databricks.auth import (
     apply_pat_environment,
     ensure_pat_bearer,
@@ -40,6 +34,12 @@ from lucode.fetch import configure_fetch_command
 from lucode.mcp.commands import configure_mcp_command
 from lucode.mcp.config import MCP_CLIENTS, revert_mcp_configs
 from lucode.mcp.skills import SKILLS_MCP_KIND, configure_skills_mcp_command
+from lucode.provisioning import (
+    ConfigurationRequest,
+    _prompt_for_configuration,
+    configure_shared_state,
+    run_configuration,
+)
 from lucode.state import (
     STATE_PATH,
     clear_state,

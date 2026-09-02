@@ -379,9 +379,9 @@ class TestConfigureMcpFlag:
     def test_mcp_with_agents_configures_then_registers_services(self):
         with (
             patch("lucode.cli.install_databricks_cli"),
-            patch("lucode.configuration.install_tool_binary"),
-            patch("lucode.configuration.configure_workspace_command") as mock_cfg,
-            patch("lucode.configuration.configure_mcp_command") as mock_mcp,
+            patch("lucode.provisioning.install_tool_binary"),
+            patch("lucode.provisioning.configure_workspace_command") as mock_cfg,
+            patch("lucode.provisioning.configure_mcp_command") as mock_mcp,
         ):
             result = runner.invoke(
                 app,
@@ -399,9 +399,9 @@ class TestConfigureMcpFlag:
         # never the interactive agent picker, then register the MCP service.
         with (
             patch("lucode.cli.install_databricks_cli"),
-            patch("lucode.configuration.configure_workspace_command") as mock_cfg,
-            patch("lucode.configuration._configure_shared_workspace_states") as mock_shared,
-            patch("lucode.configuration.configure_mcp_command") as mock_mcp,
+            patch("lucode.provisioning.configure_workspace_command") as mock_cfg,
+            patch("lucode.provisioning._configure_shared_workspace_states") as mock_shared,
+            patch("lucode.provisioning.configure_mcp_command") as mock_mcp,
         ):
             result = runner.invoke(
                 app,
@@ -426,9 +426,9 @@ class TestConfigureMcpFlag:
     def test_mcp_rejects_bare_short_name(self):
         with (
             patch("lucode.cli.install_databricks_cli"),
-            patch("lucode.configuration.configure_workspace_command"),
-            patch("lucode.configuration._configure_shared_workspace_states"),
-            patch("lucode.configuration.configure_mcp_command") as mock_mcp,
+            patch("lucode.provisioning.configure_workspace_command"),
+            patch("lucode.provisioning._configure_shared_workspace_states"),
+            patch("lucode.provisioning.configure_mcp_command") as mock_mcp,
         ):
             result = runner.invoke(
                 app, ["configure", "--workspaces", "https://ws.databricks.com", "--mcp", "slack"]
@@ -439,7 +439,7 @@ class TestConfigureMcpFlag:
 
 class TestConfigureAgentsSelection:
     def test_selected_tools_skip_picker(self, monkeypatch):
-        import lucode.configuration as cli_mod
+        import lucode.provisioning as cli_mod
 
         state = {**MINIMAL_STATE, "available_tools": []}
         monkeypatch.setattr(
@@ -477,7 +477,7 @@ class TestConfigureAgentsSelection:
         assert configured == [["opencode", "pi"]]
 
     def test_unavailable_selected_tool_errors_before_configure(self, monkeypatch):
-        import lucode.configuration as cli_mod
+        import lucode.provisioning as cli_mod
 
         state = {**MINIMAL_STATE, "available_tools": []}
         monkeypatch.setattr(
@@ -500,7 +500,7 @@ class TestConfigureAgentsSelection:
             cli_mod.configure_workspace_command(selected_tools=["opencode", "pi"])
 
     def test_multiple_workspaces_configure_all_and_use_first(self, monkeypatch):
-        import lucode.configuration as cli_mod
+        import lucode.provisioning as cli_mod
 
         states = {
             "https://first.com": {**MINIMAL_STATE, "workspace": "https://first.com"},
@@ -556,7 +556,7 @@ class TestConfigureAgentsSelection:
 class TestParseProfilesOption:
     @staticmethod
     def _patch_profiles(monkeypatch, entries):
-        import lucode.configuration as cli_mod
+        import lucode.provisioning as cli_mod
 
         monkeypatch.setattr(cli_mod, "list_profile_entries", lambda: entries)
         return cli_mod
@@ -603,7 +603,7 @@ class TestConfigureSharedStateMcpCleanup:
 
     @staticmethod
     def _stub_external_deps(monkeypatch):
-        import lucode.configuration as cli_mod
+        import lucode.provisioning as cli_mod
 
         monkeypatch.setattr(cli_mod, "normalize_workspace_url", lambda w: w)
         monkeypatch.setattr(cli_mod, "run_databricks_login", lambda w, p: None)
@@ -618,7 +618,7 @@ class TestConfigureSharedStateMcpCleanup:
         monkeypatch.setattr(cli_mod, "build_shared_base_urls", lambda w: {})
 
     def test_purges_residue_when_workspace_changes(self, monkeypatch):
-        import lucode.configuration as cli_mod
+        import lucode.provisioning as cli_mod
 
         self._stub_external_deps(monkeypatch)
         monkeypatch.setattr(
@@ -638,7 +638,7 @@ class TestConfigureSharedStateMcpCleanup:
         assert called_workspace == "https://new.databricks.com"
 
     def test_skips_purge_when_workspace_unchanged(self, monkeypatch):
-        import lucode.configuration as cli_mod
+        import lucode.provisioning as cli_mod
 
         self._stub_external_deps(monkeypatch)
         monkeypatch.setattr(
@@ -665,7 +665,7 @@ class TestConfigureSharedStateSkipPreflight:
 
     @staticmethod
     def _stub(monkeypatch):
-        import lucode.configuration as cli_mod
+        import lucode.provisioning as cli_mod
 
         def _boom(name):
             def _f(*a, **k):

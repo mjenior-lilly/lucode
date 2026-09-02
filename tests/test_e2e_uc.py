@@ -14,9 +14,9 @@ from __future__ import annotations
 
 import pytest
 
-from lucode.configuration import configure_shared_state
 from lucode.databricks.mcp_discovery import list_mcp_services
 from lucode.databricks.models import discover_model_services
+from lucode.provisioning import configure_shared_state
 from lucode.state import load_state
 
 
