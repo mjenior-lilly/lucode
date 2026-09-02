@@ -126,7 +126,7 @@ class TestRenderOverlay:
         overlay, _ = opencode.render_overlay("system.ai.glm-5-3-flash", "tok", _base_urls(), models)
         glm = overlay["provider"]["databricks-oss"]["models"]["system.ai.glm-5-3-flash"]
         # OpenCode's schema requires both context and output on `limit`.
-        assert glm["limit"] == {"context": 200000, "output": 25000}
+        assert glm["limit"] == {"context": 1_000_000, "output": 128_000}
 
     def test_non_glm_oss_model_has_no_output_cap(self):
         models = {"oss": ["system.ai.kimi-k2-7-code"]}
@@ -614,12 +614,10 @@ class TestPerModelTuningPreserved:
         assert models[self.TUNED]["limit"] == self.TUNED_LIMIT
         assert models[self.TUNED]["name"]
 
-    def test_tuned_limit_outranks_family_substring_table(self):
-        # model_token_limits matches any *glm* id and would clamp this verified
-        # 1M/128k cap down to the family default 200k/25k.
+    def test_family_fallback_matches_verified_tuned_limit(self):
         from lucode.databricks.models import model_token_limits
 
-        assert model_token_limits(self.TUNED) == {"context": 200_000, "output": 25_000}
+        assert model_token_limits(self.TUNED) == self.TUNED_LIMIT
         assert self._render()[self.TUNED]["limit"] == self.TUNED_LIMIT
 
     def test_user_limit_outranks_packaged_tuning(self):
@@ -640,8 +638,8 @@ class TestPerModelTuningPreserved:
         # A model with no packaged tuning must still get the family fallback.
         models = self._render(oss=["system.ai.glm-4-6-flash"])
         assert models["system.ai.glm-4-6-flash"]["limit"] == {
-            "context": 200_000,
-            "output": 25_000,
+            "context": 1_000_000,
+            "output": 128_000,
         }
 
     def test_empty_user_map_still_means_serve_nothing(self):

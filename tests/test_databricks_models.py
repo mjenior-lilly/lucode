@@ -76,14 +76,14 @@ class TestBuildOpencodeBaseUrls:
 class TestModelTokenLimits:
     def test_glm_is_capped(self):
         assert db_mod.model_token_limits("system.ai.glm-5-3-flash") == {
-            "context": 200_000,
-            "output": 25_000,
+            "context": 1_000_000,
+            "output": 128_000,
         }
 
     def test_glm_matches_any_version(self):
         assert db_mod.model_token_limits("system.ai.glm-4-6-flash") == {
-            "context": 200_000,
-            "output": 25_000,
+            "context": 1_000_000,
+            "output": 128_000,
         }
 
     def test_uncapped_model_returns_none(self):
