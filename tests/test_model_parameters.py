@@ -45,6 +45,7 @@ class TestPackagedDefaultsAreImportable:
     def test_settings_packages_are_exposed(self):
         packages = parameters.pi_settings_packages()
         assert packages and all(p.startswith("npm:") for p in packages)
+        assert "npm:pi-context" in packages
 
 
 class TestNoCredentialsOrRoutesLeak:

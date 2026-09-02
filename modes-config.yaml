@@ -1,0 +1,161 @@
+# Shared command families that supplement the extension's built-in safelist
+# (cat, grep, find, rg, fd, bat, eza, jq, and standard inspection commands).
+# The uv and language-execution additions are fully anchored. The evaluator
+# prerequisite must also prevent a built-in safe fragment from authorizing an
+# unknown command elsewhere in the same shell expression.
+bash_patterns:
+  safe:
+    add:
+      - '(?:^|[;&|]{1,2})\s*(?:rg|ripgrep|ack|ag|pt|sift)\b'
+      - '(?:^|[;&|]{1,2})\s*git\s+(?:grep|ls-files|rev-parse|name-rev|describe)\b'
+      - '(?:^|[;&|]{1,2})\s*(?:locate|mdfind|realpath|readlink|basename|dirname|pathchk)\b'
+      - '(?:^|[;&|]{1,2})\s*(?:cut|paste|join|comm|cmp|nl|column|tr)\b'
+      - '(?:^|[;&|]{1,2})\s*(?:strings|hexdump|xxd|od|shasum|sha256sum|md5sum|md5)\b'
+      - '^uv[ \t]+(?:-V|--version)$'
+      - '^uv[ \t]+help(?:$|[ \t])[^;&|`$<>\r\n]*$'
+      - '^uv[ \t]+[\w-]+[ \t]+--help$'
+      - '^uv[ \t]+[\w-]+[ \t]+--help[ \t]*\|[ \t]*sed[ \t]+-n[ \t]+(["\x27])[0-9]+,[0-9]+p\1$'
+      - '^uv[ \t]+[\w-]+[ \t]+--help[ \t]*\|[ \t]*sed[ \t]+-n[ \t]+(["\x27])[0-9]+,[0-9]+p\1[ \t]*;[ \t]*printf[ \t]+(["\x27])[^;&|`$<>\r\n]*\2$'
+      - '^uv[ \t]+(?:tree|version)(?:[ \t]+--(?:offline|no-cache|no-progress|no-config))*$'
+      - '^uv[ \t]+pip[ \t]+(?:list|freeze|show|check|tree)\b[^;&|`$<>\r\n]*$'
+      - '^uv[ \t]+sync\b(?=[^;&|`$<>\r\n]*--(?:dry-run|check)\b)[^;&|`$<>\r\n]*$'
+      - '^uv[ \t]+run(?:[ \t]+--(?:no-sync|locked|frozen))*[ \t]+(?:pytest|python[ \t]+-m[ \t]+pytest)\b[^;&|`$<>\r\n]*$'
+      - '^uv[ \t]+run(?:[ \t]+--(?:no-sync|locked|frozen))*[ \t]+protocol-builder[ \t]+run[ \t]+resume[ \t]+--help$'
+      - '^uv[ \t]+run[ \t]+python[ \t]+-c[ \t]+(["\x27])(?:import|from)[^;&|`$<>\r\n]+\1$'
+      - '^uv[ \t]+run[ \t]+python[ \t]+-[ \t]+<<["\x27]?([A-Za-z_]\w*)["\x27]?\r?\n(?:[ \t]*(?:import|from)[^;&|`$<>\r\n]+\r?\n)+\1[ \t]*$'
+      - '^(?:(?:\.venv|venv)/bin/)?python3?[ \t]+-c[ \t]+(["\x27])(?:import|from)[^;&|`$<>\r\n]+\1$'
+      - '^(?:(?:\.venv|venv)/bin/)?python3?[ \t]+-[ \t]+<<["\x27]?([A-Za-z_]\w*)["\x27]?\r?\n(?:[ \t]*(?:import|from)[^;&|`$<>\r\n]+\r?\n)+\1[ \t]*$'
+      - '^(?:(?:\.venv|venv)/bin/)?python3?[ \t]+-m[ \t]+pip[ \t]+(?:list|freeze|check)$'
+      - '^(?:(?:\.venv|venv)/bin/)?python3?[ \t]+-m[ \t]+pip[ \t]+show[ \t]+[\w.-]+$'
+      - '^uv[ \t]+(?:-V|--version)[ \t]+&&[ \t]+uv[ \t]+sync\b(?=[^;&|`$<>\r\n]*--(?:dry-run|check)\b)[^;&|`$<>\r\n]*$'
+      - '^node(?:[ \t]+--input-type=(?:module|commonjs))?[ \t]+<<["\x27]?([A-Za-z_]\w*)["\x27]?\r?\n[\s\S]*\r?\n\1[ \t]*$'
+      - '^node[ \t]+--check[ \t]+(?!/)(?![^\r\n]*\.\.)[\w.@%+=:,/ -]+$'
+      - '^(?:pytest|(?:(?:\.venv|venv)/bin/)?python3?[ \t]+-m[ \t]+pytest|(?:\.venv|venv)/bin/pytest)\b[^;&|`$<>\r\n]*$'
+      - '^node[ \t]+--test\b[^;&|`$<>\r\n]*$'
+      - '^(?:npm|pnpm|yarn|bun)[ \t]+(?:test|run[ \t]+test)\b[^;&|`$<>\r\n]*$'
+      - '^(?:go|cargo|dotnet|swift)[ \t]+test\b[^;&|`$<>\r\n]*$'
+      - '^(?:mvn|gradle)[ \t]+test\b[^;&|`$<>\r\n]*$'
+      - '^bundle[ \t]+exec[ \t]+rspec\b[^;&|`$<>\r\n]*$'
+      - '^(?:vendor/bin/)?phpunit\b[^;&|`$<>\r\n]*$'
+      - '^command[ \t]+-v[ \t]+[\w.-]+$'
+      - '^command -v python python3 node ruby perl php go cargo rustc java javac mvn gradle dotnet swift R Rscript sqlite3 psql jq yq 2>/dev/null \|\| true$'
+      - '^(?:python3?|cargo|rustc)[ \t]+(?:-V|--version)$'
+      - '^(?:node|ruby|perl|php|mvn|gradle|npm|pnpm|yarn|bun)[ \t]+(?:-v|--version)$'
+      - '^(?:dotnet|swift|R|Rscript|sqlite3|psql|jq|yq)[ \t]+--version$'
+      - '^(?:java|javac)[ \t]+-version$'
+      - '^go[ \t]+version$'
+      - '^(?:bash|sh|zsh)[ \t]+-n[ \t]+(?!/)(?![^\r\n]*\.\.)[\w.@%+=:,/ -]+$'
+      - '^ruby[ \t]+-c[ \t]+(?!/)(?![^\r\n]*\.\.)[\w.@%+=:,/ -]+$'
+      - '^php[ \t]+-l[ \t]+(?!/)(?![^\r\n]*\.\.)[\w.@%+=:,/ -]+$'
+      - '^gofmt[ \t]+-d[ \t]+(?!/)(?![^\r\n]*\.\.)[\w.@%+=:,/ -]+$'
+      - '^rustfmt[ \t]+--check[ \t]+(?!/)(?![^\r\n]*\.\.)[\w.@%+=:,/ -]+$'
+      - '^cargo[ \t]+metadata[ \t]+--no-deps[ \t]+--offline[ \t]+--locked$'
+      - '^cargo[ \t]+tree[ \t]+--offline[ \t]+--locked$'
+      - '^dotnet[ \t]+--(?:info|list-sdks|list-runtimes)$'
+      - '^sqlite3[ \t]+-readonly[ \t]+[^;&|`$<>\r\n]+[ \t]+(["\x27])\.(?:schema|tables)\1$'
+      - '^ruby[ \t]+-e[ \t]+\x27require[ \t]+"yaml";[ \t]+puts[ \t]+YAML\.class\x27$'
+      - '^command[ \t]+-v[ \t]+ruby;[ \t]*ruby[ \t]+-e[ \t]+\x27require[ \t]+"yaml";[ \t]+puts[ \t]+YAML\.class\x27$'
+  # Permit only a final stderr-to-terminal/null redirect for bounded read
+  # commands, plus a bounded find-to-filter pipeline. Classify mutating uv
+  # commands and arbitrary ruby -e programs as destructive in every mode,
+  # then allow only the exact inspection exceptions registered below.
+  destructive:
+    add:
+      - '(?:^|[;&|]{1,2})\s*uv\s+(?:auth|init|add|remove|version|sync|lock|format|venv|build|publish)\b'
+      - '(?:^|[;&|]{1,2})\s*uv\s+(?:pip\s+(?:install|uninstall|sync)|tool\s+(?:install|uninstall|upgrade)|python\s+(?:install|uninstall|upgrade)|cache\s+(?:clean|prune)|self\s+update)\b'
+      - '(?:^|[;&|]{1,2})\s*ruby\s+-e\b'
+      - '^command -v python python3 node ruby perl php go cargo rustc java javac mvn gradle dotnet swift R Rscript sqlite3 psql jq yq 2>/dev/null \|\| true$'
+      - '^uv[ \t]+(?:tree|version)(?:[ \t]+--(?:offline|no-cache|no-progress|no-config))*$'
+      - '^uv[ \t]+sync\b(?=[^;&|`$<>\r\n]*--(?:dry-run|check)\b)[^;&|`$<>\r\n]*$'
+      - '^uv[ \t]+(?:-V|--version)[ \t]+&&[ \t]+uv[ \t]+sync\b(?=[^;&|`$<>\r\n]*--(?:dry-run|check)\b)[^;&|`$<>\r\n]*$'
+      - '^ruby[ \t]+-e[ \t]+\x27require[ \t]+"yaml";[ \t]+puts[ \t]+YAML\.class\x27$'
+      - '^command[ \t]+-v[ \t]+ruby;[ \t]*ruby[ \t]+-e[ \t]+\x27require[ \t]+"yaml";[ \t]+puts[ \t]+YAML\.class\x27$'
+      - '^(?:cat|head|tail|less|more|grep|rg|ripgrep|ack|ag|pt|sift|ls|fd|bat|eza)\b[^;&|`$<>\r\n]*[ \t]+2>[ \t]*(?:/dev/null|&1)$'
+      - '^find\b(?![^\r\n]*-(?:delete|exec|execdir|ok|okdir)\b)(?![^\r\n]*\$(?!HOME\b))[^;&|`<>\r\n]*[ \t]+2>[ \t]*(?:/dev/null|&1)$'
+      - '^find\b(?![^\r\n]*-(?:delete|exec|execdir|ok|okdir)\b)(?![^\r\n]*\$(?!HOME\b))[^;&|`<>\r\n]*[ \t]+2>[ \t]*(?:/dev/null|&1)[ \t]*\|[ \t]*(?:head|tail|wc)\b[^;&|`$<>\r\n]*$'
+      - '^find "\$HOME/\.ucode/pi-home/\.pi/agent" -path \x27[^\x27\r\n]+\x27 -print 2>/dev/null \| head -20; command -v ruby; ruby -e \x27require "yaml"; puts YAML\.class\x27$'
+      - '^(?:file|stat|du|df|tree|which|whereis|type|env|printenv|uname|whoami|id|date|cal|uptime|ps)\b[^;&|`$<>\r\n]*[ \t]+2>[ \t]*(?:/dev/null|&1)$'
+      - '^git[ \t]+(?:status|log|diff|show|branch|remote|grep|ls-files|rev-parse|name-rev|describe)\b[^;&|`$<>\r\n]*[ \t]+2>[ \t]*(?:/dev/null|&1)$'
+      - '^(?:jq|cut|paste|join|comm|cmp|nl|column|tr|strings|hexdump|xxd|od|shasum|sha256sum|md5sum|md5)\b[^;&|`$<>\r\n]*[ \t]+2>[ \t]*(?:/dev/null|&1)$'
+    severity:
+      '^command -v python python3 node ruby perl php go cargo rustc java javac mvn gradle dotnet swift R Rscript sqlite3 psql jq yq 2>/dev/null \|\| true$': allow
+      '^uv[ \t]+(?:tree|version)(?:[ \t]+--(?:offline|no-cache|no-progress|no-config))*$': allow
+      '^uv[ \t]+sync\b(?=[^;&|`$<>\r\n]*--(?:dry-run|check)\b)[^;&|`$<>\r\n]*$': allow
+      '^uv[ \t]+(?:-V|--version)[ \t]+&&[ \t]+uv[ \t]+sync\b(?=[^;&|`$<>\r\n]*--(?:dry-run|check)\b)[^;&|`$<>\r\n]*$': allow
+      '^ruby[ \t]+-e[ \t]+\x27require[ \t]+"yaml";[ \t]+puts[ \t]+YAML\.class\x27$': allow
+      '^command[ \t]+-v[ \t]+ruby;[ \t]*ruby[ \t]+-e[ \t]+\x27require[ \t]+"yaml";[ \t]+puts[ \t]+YAML\.class\x27$': allow
+      '^(?:cat|head|tail|less|more|grep|rg|ripgrep|ack|ag|pt|sift|ls|fd|bat|eza)\b[^;&|`$<>\r\n]*[ \t]+2>[ \t]*(?:/dev/null|&1)$': allow
+      '^find\b(?![^\r\n]*-(?:delete|exec|execdir|ok|okdir)\b)(?![^\r\n]*\$(?!HOME\b))[^;&|`<>\r\n]*[ \t]+2>[ \t]*(?:/dev/null|&1)$': allow
+      '^find\b(?![^\r\n]*-(?:delete|exec|execdir|ok|okdir)\b)(?![^\r\n]*\$(?!HOME\b))[^;&|`<>\r\n]*[ \t]+2>[ \t]*(?:/dev/null|&1)[ \t]*\|[ \t]*(?:head|tail|wc)\b[^;&|`$<>\r\n]*$': allow
+      '^find "\$HOME/\.ucode/pi-home/\.pi/agent" -path \x27[^\x27\r\n]+\x27 -print 2>/dev/null \| head -20; command -v ruby; ruby -e \x27require "yaml"; puts YAML\.class\x27$': allow
+      '^(?:file|stat|du|df|tree|which|whereis|type|env|printenv|uname|whoami|id|date|cal|uptime|ps)\b[^;&|`$<>\r\n]*[ \t]+2>[ \t]*(?:/dev/null|&1)$': allow
+      '^git[ \t]+(?:status|log|diff|show|branch|remote|grep|ls-files|rev-parse|name-rev|describe)\b[^;&|`$<>\r\n]*[ \t]+2>[ \t]*(?:/dev/null|&1)$': allow
+      '^(?:jq|cut|paste|join|comm|cmp|nl|column|tr|strings|hexdump|xxd|od|shasum|sha256sum|md5sum|md5)\b[^;&|`$<>\r\n]*[ \t]+2>[ \t]*(?:/dev/null|&1)$': allow
+
+plan:
+  bash_policy: strict_readonly
+  enabled_tools:
+    - read
+    - bash
+    - grep
+    - find
+    - ls
+    - questionnaire
+    - ask_user_question
+    - ask_user
+
+ask:
+  bash_policy: strict_readonly
+  enabled_tools:
+    - read
+    - bash
+    - grep
+    - find
+    - ls
+    - questionnaire
+    - ask_user_question
+    - ask_users
+    - ask_user
+
+orchestrator:
+  bash_policy: strict_readonly
+  enabled_tools:
+    - Agent
+    - bash
+    - subagent
+    - get_subagent_result
+    - steer_subagent
+    - todo
+    - read
+    - grep
+    - find
+    - ls
+    - questionnaire
+    - ask_user_question
+    - ask_user
+    - request_mode_switch
+
+code:
+  bash_policy: non_destructive
+  enabled_tools: [] # All registered baseline tools, including ask_user.
+  # CODE may perform syntactically relative creation, copying, moving, linking,
+  # and simple text output. These patterns reject absolute/path-option forms,
+  # parent traversal, shell substitution, and unrestricted command composition.
+  bash_patterns:
+    destructive:
+      add:
+        - '^mkdir(?: -p)? (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/ -]+$'
+        - '^touch (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/ -]+$'
+        - '^cp(?: -[Rrpaifn]{1,8})? (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/-]+ [\w.@%+=:,/ -]+$'
+        - '^mv(?: -[fin]{1,3})? (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/-]+ [\w.@%+=:,/ -]+$'
+        - '^ln(?: -[sfn]{1,3})? (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/-]+ [\w.@%+=:,/-]+$'
+        - '^(?:printf|echo) [^;&|`$<>\r\n]*>{1,2} *(?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/-]+$'
+        - '^(?:printf|echo) [^;&|`$<>\r\n]*\| *tee(?: -a)? (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/-]+$'
+      severity:
+        '^mkdir(?: -p)? (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/ -]+$': allow
+        '^touch (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/ -]+$': allow
+        '^cp(?: -[Rrpaifn]{1,8})? (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/-]+ [\w.@%+=:,/ -]+$': allow
+        '^mv(?: -[fin]{1,3})? (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/-]+ [\w.@%+=:,/ -]+$': allow
+        '^ln(?: -[sfn]{1,3})? (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/-]+ [\w.@%+=:,/-]+$': allow
+        '^(?:printf|echo) [^;&|`$<>\r\n]*>{1,2} *(?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/-]+$': allow
+        '^(?:printf|echo) [^;&|`$<>\r\n]*\| *tee(?: -a)? (?!/)(?![^\r\n]*\.\.)(?![^\r\n]*(?: -| /|=/))[\w.@%+=:,/-]+$': allow

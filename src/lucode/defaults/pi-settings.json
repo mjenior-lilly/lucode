@@ -25,6 +25,7 @@
     "npm:@datspike/pi-inline-slash-extension",
     "npm:pi-ask-user",
     "npm:pi-subagents",
+    "npm:pi-context",
     "npm:pi-web-search"
   ],
   "defaultProjectTrust": "always",
