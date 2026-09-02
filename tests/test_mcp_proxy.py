@@ -204,6 +204,23 @@ class TestServe:
         assert "No PAT is available" in captured.err
         assert captured.out == ""
 
+    def test_unexpected_pat_activation_error_propagates(self, monkeypatch):
+        calls: list[str] = []
+
+        def raise_unexpected(profile):
+            raise RuntimeError("unexpected PAT activation failure")
+
+        monkeypatch.setattr(proxy, "ensure_pat_bearer", raise_unexpected)
+        monkeypatch.setattr(
+            proxy, "_preflight_token", lambda ws, profile: calls.append("preflight")
+        )
+        monkeypatch.setattr(proxy.anyio, "run", lambda func, *args: calls.append("bridge"))
+
+        with pytest.raises(RuntimeError, match="unexpected PAT activation failure"):
+            proxy.serve(URL, WS, "pat-profile", use_pat=True)
+
+        assert calls == []
+
     def test_dead_auth_exits_fast_without_starting_the_bridge(self, monkeypatch, capsys):
         # The regression this fix targets: previously the token failure surfaced
         # from inside the transport and the proxy hung until the MCP client's

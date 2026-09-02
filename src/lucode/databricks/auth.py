@@ -217,9 +217,9 @@ def install_ai_tools(agent_tokens: list[str], profile: str | None = None) -> Non
 def _profile_args(profile: str | None) -> list[str]:
     """Return ``["--profile", profile]`` when set, otherwise an empty list.
 
-    Centralizing this keeps every `databricks` CLI invocation in this module
-    consistent when a workspace's `~/.databrickscfg` has more than one profile
-    pointing at the same host."""
+    Centralizing this keeps `databricks` CLI invocations in `auth.py` and
+    `mcp_discovery.py` consistent when a workspace's `~/.databrickscfg` has
+    more than one profile pointing at the same host."""
     return ["--profile", profile] if profile else []
 
 

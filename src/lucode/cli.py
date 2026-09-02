@@ -205,8 +205,6 @@ app = typer.Typer(
 )
 configure_app = typer.Typer(add_completion=False, no_args_is_help=False)
 app.add_typer(configure_app, name="configure", help="Configure workspace and tool settings.")
-mcp_app = typer.Typer(add_completion=False, no_args_is_help=True)
-app.add_typer(mcp_app, name="mcp", help="MCP servers exposed by lucode.")
 prompts_app = typer.Typer(add_completion=False, no_args_is_help=True)
 app.add_typer(prompts_app, name="prompts", help="Manage revisioned shared prompts.")
 

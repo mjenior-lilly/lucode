@@ -10,6 +10,7 @@ import lucode.agents.configuration as configuration_mod
 import lucode.agents.install as install_mod
 import lucode.agents.registry as registry_mod
 import lucode.agents.validation as validation_mod
+import lucode.provisioning as provisioning_mod
 from lucode.agents.configuration import check_gateway_endpoint, configure_selected_tools
 from lucode.agents.install import (
     ensure_tool_binary_available,
@@ -17,12 +18,14 @@ from lucode.agents.install import (
     install_tool_binary,
 )
 from lucode.agents.registry import (
+    TOOL_DISCOVERY_SOURCES,
     TOOL_SPECS,
     default_model_for_tool,
     normalize_tool,
     resolve_launch_model,
 )
 from lucode.config import NPM_REGISTRY
+from lucode.provisioning import _discover_workspace_models, _requested_model_families
 
 
 class TestToolSpecs:
@@ -38,6 +41,51 @@ class TestToolSpecs:
     def test_each_agent_exposes_update_check(self):
         for tool, module in registry_mod._MODULES.items():
             assert callable(module.is_update_available), f"{tool} missing is_update_available"
+
+    def test_discovery_sources_match_agent_contracts(self):
+        assert TOOL_DISCOVERY_SOURCES == {
+            "opencode": ("claude", "gemini", "oss"),
+            "pi": ("claude", "codex", "gemini"),
+        }
+        assert set(_requested_model_families(["pi"])) == {"claude", "codex", "gemini"}
+        assert set(_requested_model_families(["opencode"])) == {"claude", "gemini", "oss"}
+
+
+class TestDiscoveryPolicy:
+    @pytest.mark.parametrize(
+        "tool,expected_families",
+        [
+            ("pi", {"claude", "codex", "gemini"}),
+            ("opencode", {"claude", "gemini", "oss"}),
+        ],
+    )
+    def test_single_tool_discovery_requests_only_its_families(
+        self, monkeypatch, tool, expected_families
+    ):
+        monkeypatch.setattr(
+            provisioning_mod,
+            "discover_model_services",
+            lambda workspace, token: ({}, [], [], [], None),
+        )
+        monkeypatch.setattr(
+            provisioning_mod, "discover_claude_models", lambda workspace, token: ({}, None)
+        )
+        monkeypatch.setattr(
+            provisioning_mod, "discover_codex_models", lambda workspace, token: ([], None)
+        )
+        monkeypatch.setattr(
+            provisioning_mod, "discover_gemini_models", lambda workspace, token: ([], None)
+        )
+
+        reasons, partial, _ = _discover_workspace_models(
+            {"workspace": "https://example.com"},
+            "token",
+            [tool],
+            skip_model_discovery=False,
+        )
+
+        assert set(reasons) == expected_families
+        assert partial is False
 
 
 class TestInstallAiToolsForAgents:

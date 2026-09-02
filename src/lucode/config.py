@@ -145,8 +145,7 @@ def ensure_parent_dir(path: Path) -> None:
 
 def _atomic_write(path: Path, content: str) -> None:
     ensure_parent_dir(path)
-    existing_mode = path.stat().st_mode & 0o777 if path.exists() else PRIVATE_FILE_MODE
-    target_mode = existing_mode & PRIVATE_FILE_MODE
+    target_mode = PRIVATE_FILE_MODE
     temp_path: Path | None = None
     try:
         fd, raw_path = tempfile.mkstemp(prefix=f".{path.name}.", dir=path.parent)
@@ -176,16 +175,31 @@ def file_lock(name: str = "state") -> Iterator[None]:
     ensure_parent_dir(lock_path)
     stream: IO[str] = lock_path.open("a+", encoding="utf-8")
     os.chmod(lock_path, PRIVATE_FILE_MODE)
+    acquired = False
+    pending_error: BaseException | None = None
     try:
         if os.name == "posix":
             import fcntl
 
             fcntl.flock(stream.fileno(), fcntl.LOCK_EX)
+            acquired = True
         yield
+    except BaseException as exc:
+        pending_error = exc
+        raise
     finally:
-        if os.name == "posix":
-            fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
-        stream.close()
+        try:
+            if acquired:
+                fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+        except BaseException as exc:
+            pending_error = exc
+            raise
+        finally:
+            try:
+                stream.close()
+            except BaseException:
+                if pending_error is None:
+                    raise
 
 
 def backup_existing_file(config_path: Path, backup_path: Path) -> bool:

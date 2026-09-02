@@ -139,14 +139,10 @@ def serve(url: str, workspace: str, profile: str | None = None, *, use_pat: bool
     letting the client wait out its MCP startup timeout with no explanation."""
     # PAT activation must happen before preflight so a fresh PAT-only process
     # validates and subsequently reuses the exported bearer.
-    if use_pat:
-        try:
-            if not ensure_pat_bearer(profile):
-                _fail_fast(
-                    "No PAT is available for the selected profile. Configure a PAT profile or omit --use-pat."
-                )
-        except Exception as exc:
-            _fail_fast(f"Could not activate PAT authentication: {exc}")
+    if use_pat and not ensure_pat_bearer(profile):
+        _fail_fast(
+            "No PAT is available for the selected profile. Configure a PAT profile or omit --use-pat."
+        )
 
     # Pre-flight the token before opening the bridge. Without this, the first
     # token failure surfaces from inside the transport's task group, where it can

@@ -9,6 +9,10 @@ from . import opencode, pi
 _MODULES = {"opencode": opencode, "pi": pi}
 TOOL_SPECS: dict[str, ToolSpec] = {name: module.SPEC for name, module in _MODULES.items()}
 TOOL_ALIASES = {"opencode": "opencode", "pi": "pi"}
+TOOL_DISCOVERY_SOURCES: dict[str, tuple[str, ...]] = {
+    "opencode": ("claude", "gemini", "oss"),
+    "pi": ("claude", "codex", "gemini"),
+}
 
 
 def normalize_tool(tool: str) -> str:

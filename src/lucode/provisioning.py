@@ -12,7 +12,7 @@ from lucode.agents.configuration import (
     configure_single_tool,
 )
 from lucode.agents.install import install_tool_binary
-from lucode.agents.registry import TOOL_SPECS, normalize_tool
+from lucode.agents.registry import TOOL_DISCOVERY_SOURCES, TOOL_SPECS, normalize_tool
 from lucode.agents.validation import validate_all_tools, validate_tool
 from lucode.config import restore_file
 from lucode.databricks.auth import (
@@ -50,12 +50,22 @@ from lucode.ui import (
     spinner,
 )
 
-_DISCOVERY_CONSUMERS: dict[str, tuple[str, ...]] = {
-    "claude": ("opencode", "pi"),
-    "codex": ("pi",),
-    "gemini": ("opencode", "pi"),
-    "oss": ("opencode",),
-}
+
+def _discovery_consumers() -> dict[str, tuple[str, ...]]:
+    families = {family for sources in TOOL_DISCOVERY_SOURCES.values() for family in sources}
+    return {
+        family: tuple(tool for tool, sources in TOOL_DISCOVERY_SOURCES.items() if family in sources)
+        for family in families
+    }
+
+
+def _requested_model_families(tools: list[str] | None) -> tuple[str, ...]:
+    selected_tools = TOOL_DISCOVERY_SOURCES if tools is None else tools
+    return tuple(
+        dict.fromkeys(
+            family for tool in selected_tools for family in TOOL_DISCOVERY_SOURCES.get(tool, ())
+        )
+    )
 
 
 def _print_discovery_diagnostics(state: dict) -> None:
@@ -70,8 +80,9 @@ def _print_discovery_diagnostics(state: dict) -> None:
         "gemini": "Gemini models",
         "oss": "OSS models",
     }
+    consumers_by_source = _discovery_consumers()
     for source, reason in reasons.items():
-        consumers = ", ".join(_DISCOVERY_CONSUMERS.get(source, ()))
+        consumers = ", ".join(consumers_by_source.get(source, ()))
         label = labels.get(source, source)
         if reason:
             print_note(f"{label} (needed for: {consumers}): {reason}")
@@ -264,12 +275,7 @@ def _discover_workspace_models(
     """Discover requested model families and apply results to state."""
     workspace = state["workspace"]
     fetch_all = tools is None
-    requested = {
-        "claude": fetch_all or "opencode" in tools or "pi" in tools,
-        "gemini": fetch_all or "opencode" in tools or "pi" in tools,
-        "codex": fetch_all or "pi" in tools,
-        "oss": fetch_all or "opencode" in tools,
-    }
+    requested = dict.fromkeys(_requested_model_families(tools), True)
     reasons: dict[str, str | None] = dict.fromkeys(requested)
     prior_model_values = {key: state[key] for key in _MODEL_STATE_KEYS if key in state}
     if skip_model_discovery:
@@ -284,20 +290,20 @@ def _discover_workspace_models(
         gemini_models: list = []
         codex_models: list = []
         oss_models: list = []
-        if requested["claude"]:
+        if requested.get("claude"):
             claude_models, reasons["claude"] = ms_claude, ms_reason
             if not claude_models:
                 claude_models, reasons["claude"] = discover_claude_models(workspace, token)
             claude_models.pop("fable", None)
-        if requested["gemini"]:
+        if requested.get("gemini"):
             gemini_models, reasons["gemini"] = ms_gemini, ms_reason
             if not gemini_models:
                 gemini_models, reasons["gemini"] = discover_gemini_models(workspace, token)
-        if requested["codex"]:
+        if requested.get("codex"):
             codex_models, reasons["codex"] = ms_codex, ms_reason
             if not codex_models:
                 codex_models, reasons["codex"] = discover_codex_models(workspace, token)
-        if requested["oss"]:
+        if requested.get("oss"):
             oss_models, reasons["oss"] = ms_oss, ms_reason
 
     opencode_models: dict[str, list[str]] = {}
@@ -373,7 +379,7 @@ def configure_shared_state(
         return _persist_workspace_result(
             state,
             previous_workspace,
-            dict.fromkeys(("claude", "gemini", "codex", "oss")),
+            dict.fromkeys(_requested_model_families(tools), "skipped (--skip-preflight)"),
             partial=False,
             prior_model_values={},
         )

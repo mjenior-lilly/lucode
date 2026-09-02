@@ -6,6 +6,5 @@ dist/
 .venv/
 .DS_Store
 .isaac/
-slop-audit-*.md
 .ruff_cache/
 .pytest_cache/

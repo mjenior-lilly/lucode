@@ -31,10 +31,6 @@ def set_verbosity(value: str) -> None:
     _verbosity = value or "normal"
 
 
-def get_verbosity() -> str:
-    return _verbosity
-
-
 def is_low_verbosity() -> bool:
     return _verbosity == "low"
 
@@ -51,28 +47,6 @@ def print_heading(text: str) -> None:
 
 def print_kv(key: str, val: str) -> None:
     console.print(f"  [bold]{key}:[/bold] [cyan]{val}[/cyan]")
-
-
-def kv_line(key: str, val: str) -> str:
-    """A `print_kv`-styled line, returned instead of printed, for collecting into a panel.
-
-    The value is markup-escaped. Rich reads bracketed text as a style tag and renders nothing for
-    it, so a policy name of ``[prod] tiered routing`` displayed as ``tiered routing`` in the config
-    summary — the one block an admin reads to confirm what they are about to publish workspace-wide.
-    Values here include admin-typed free text (policy name, skills locations).
-    """
-    return f"[bold]{escape(key)}:[/bold] [cyan]{escape(val)}[/cyan]"
-
-
-def print_panel(title: str, lines: list[str]) -> None:
-    """Render `lines` inside a titled box.
-
-    Unlike :func:`print_section`, which boxes a bare title, this boxes the body — so a block that
-    should be read as one unit (a config summary an admin is about to publish) reads as one, rather
-    than as loose lines that blend into whatever the flow printed before it.
-    """
-    console.print()
-    console.print(Panel("\n".join(lines), title=title, style="blue", expand=False))
 
 
 def print_note(text: str) -> None:
@@ -267,53 +241,6 @@ def prompt_for_tools(
     return list(answer) if answer else []
 
 
-def prompt_for_multi_selection(
-    prompt: str,
-    options: list[tuple[str, str]],
-    preselected: list[str] | set[str] | None = None,
-    *,
-    searchable: bool = False,
-) -> list[str] | None:
-    """Multi-select picker over arbitrary `(value, label)` options.
-
-    Distinct from :func:`prompt_for_tools`, which is agent-specific and defaults to
-    everything checked: here nothing is checked unless ``preselected`` says so, since
-    an admin picking models wants an explicit choice rather than "all of them".
-    Returns the chosen values, [] on an empty submission, or None if cancelled
-    (Ctrl-C) so callers can distinguish "chose nothing" from "aborted".
-
-    ``searchable`` lets the user narrow a long list by typing; see
-    :func:`prompt_for_selection` for why it trades away j/k navigation.
-    """
-    style = questionary.Style(
-        [
-            ("pointer", "fg:cyan bold"),
-            ("highlighted", "noinherit"),
-            ("selected", "noinherit"),
-            ("answer", "fg:cyan"),
-        ]
-    )
-    preselected_set = {str(item) for item in preselected} if preselected is not None else set()
-    choices = [
-        questionary.Choice(title=option_label, value=value, checked=value in preselected_set)
-        for value, option_label in options
-    ]
-    instruction = "(space to toggle, enter to confirm)"
-    if searchable:
-        instruction = "(type to filter, space to toggle, enter to confirm)"
-    answer = questionary.checkbox(
-        prompt,
-        choices=choices,
-        style=style,
-        pointer="›",
-        qmark="",
-        instruction=instruction,
-        use_search_filter=searchable,
-        use_jk_keys=not searchable,
-    ).ask()
-    return None if answer is None else list(answer)
-
-
 def prompt_for_text(
     prompt: str, *, default: str | None = None, required: bool = False
 ) -> str | None:
@@ -448,33 +375,3 @@ def prompt_yes_no_default(prompt: str, *, default: bool) -> bool:
         if response in {"n", "no"}:
             return False
         print_err("Please answer yes or no.")
-
-
-def prompt_for_choice(prompt: str, options: list[tuple[str, str]]) -> str:
-    console.print()
-    for index, (_, option_label) in enumerate(options, start=1):
-        console.print(f"  [bold]{index}.[/bold] [cyan]{option_label}[/cyan]")
-
-    while True:
-        raw_value = console.input(f"{label(prompt)} {muted('›')} ").strip()
-        if raw_value.isdigit():
-            selected_index = int(raw_value)
-            if 1 <= selected_index <= len(options):
-                return options[selected_index - 1][0]
-        print_err("Please enter a valid option number.")
-
-
-def prompt_for_client_id() -> str:
-    while True:
-        client_id = console.input(f"{label('OAuth client ID')} {muted('›')} ").strip()
-        if client_id:
-            return client_id
-        print_err("Client ID cannot be empty.")
-
-
-def prompt_for_client_secret() -> str:
-    while True:
-        client_secret = console.input(f"{label('OAuth client secret')} {muted('›')} ").strip()
-        if client_secret:
-            return client_secret
-        print_err("Client secret cannot be empty.")

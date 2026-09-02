@@ -763,6 +763,23 @@ class TestConfigureSharedStateSkipPreflight:
         # find_profile_name_for_host is a local ~/.databrickscfg lookup (no network).
         assert state["profile"] == "resolved"
 
+    def test_diagnostics_report_discovery_was_skipped(self, monkeypatch):
+        cli_mod, _ = self._stub(monkeypatch)
+        monkeypatch.setattr(cli_mod, "load_state", lambda: {"workspace": self.WS})
+        notes = []
+        monkeypatch.setattr(cli_mod, "print_note", notes.append)
+
+        state = cli_mod.configure_shared_state(
+            self.WS, tools=["pi"], skip_preflight=True
+        )
+        cli_mod._print_discovery_diagnostics(state)
+
+        output = "\n".join(notes)
+        assert "skipped" in output
+        assert "--skip-preflight" in output
+        assert "no models returned" not in output
+        assert "OSS models" not in output
+
 
 class TestTwoHarnessSurface:
     def test_root_help_lists_only_surviving_harness_commands(self):
@@ -773,6 +790,7 @@ class TestTwoHarnessSurface:
         assert "pi" in output
         for removed in ("claude", "codex", "gemini", "cursor", "copilot"):
             assert removed not in output.lower()
+        assert not re.search(r"^\s*mcp\s", output, re.MULTILINE)
 
     def test_bare_lucode_prints_help_and_succeeds(self):
         result = runner.invoke(app, [])
