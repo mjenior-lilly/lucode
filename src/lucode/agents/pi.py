@@ -35,7 +35,7 @@ only refreshes its token and fills in a missing route (see
 :func:`_ensure_mlflow_route`).
 
 The bearer token is baked into the file and refreshed by a background thread
-while the session runs (same pattern as OpenCode/Copilot).
+while the session runs (same pattern as OpenCode).
 """
 
 from __future__ import annotations
